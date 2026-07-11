@@ -217,9 +217,12 @@ async function renderHome() {
     const sorted = [...entries].sort(
       (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt),
     );
-    document.getElementById("entryCount").textContent = `${sorted.length} entries`;
-    target.innerHTML = sorted.length
-      ? `<div class="grid">${sorted.map(entryCardHtml).join("")}</div>`
+    const HOME_LIMIT = 12;
+    const shown = sorted.slice(0, HOME_LIMIT);
+    document.getElementById("entryCount").textContent =
+      sorted.length > HOME_LIMIT ? `${shown.length} of ${sorted.length} entries` : `${sorted.length} entries`;
+    target.innerHTML = shown.length
+      ? `<div class="grid">${shown.map(entryCardHtml).join("")}</div>`
       : `<div class="empty">The ledger is empty. Sign in and add your first entry.</div>`;
   } catch (err) {
     target.innerHTML = `<div class="empty error">${escapeHtml(err.message)}</div>`;
