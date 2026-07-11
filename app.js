@@ -214,9 +214,10 @@ async function renderHome() {
   const target = document.getElementById("galleryTarget");
   try {
     const entries = await getEntries();
-    const sorted = [...entries].sort(
-      (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt),
-    );
+    // Newest first: entries always get appended to the bottom of the Sheet,
+    // so reversing the fetch order is more reliable than parsing timestamps
+    // (which can misbehave if Sheets reformats a date-looking string).
+    const sorted = [...entries].reverse();
     const HOME_LIMIT = 12;
     const shown = sorted.slice(0, HOME_LIMIT);
     document.getElementById("entryCount").textContent =
