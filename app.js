@@ -154,10 +154,12 @@ function headerHtml() {
 
   return `
     <header class="site-header">
-      <div class="wrap header-inner">
+      <div class="wrap header-top">
         <a href="#/" class="logo display">Venkey&rsquo;s Vault</a>
-        <nav class="nav">${navLinks}</nav>
         <div class="header-actions">${actions}</div>
+      </div>
+      <div class="wrap header-nav-row">
+        <nav class="nav">${navLinks}</nav>
       </div>
     </header>`;
 }
@@ -193,12 +195,7 @@ async function renderHome() {
     ${headerHtml()}
     <section class="hero">
       <div class="wrap">
-        <p class="eyebrow">Venkey&rsquo;s Vault</p>
-        <h1 class="display">Every film, show, book,<br /><em>and adventure logged.</em></h1>
-        <p>A personal journal for movies, TV, anime, books, manga, and games. Tracked, rated, and remembered.</p>
-        <div class="chips">
-          ${CATEGORIES.map((c) => `<a class="chip" href="#/c/${c.key}">${c.label}</a>`).join("")}
-        </div>
+        <h1 class="display">Every entertainment<br /><em>is logged.</em></h1>
       </div>
     </section>
     <section class="section">
