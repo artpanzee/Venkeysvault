@@ -41,16 +41,22 @@ h1, h2, h3, .display {
 .site-header {
   border-bottom: 1px solid var(--border);
 }
-.header-inner {
+.header-top {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 0;
+  gap: 12px 16px;
+  padding: 18px 0 12px;
 }
-.logo { font-size: 24px; font-weight: 600; }
-.nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.header-nav-row {
+  padding-bottom: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.header-nav-row::-webkit-scrollbar { display: none; }
+.logo { font-size: 22px; font-weight: 600; white-space: nowrap; }
+.nav { display: flex; gap: 4px; width: max-content; }
 .nav a {
   padding: 6px 14px;
   border-radius: 999px;
@@ -58,10 +64,11 @@ h1, h2, h3, .display {
   text-transform: uppercase;
   letter-spacing: 0.15em;
   color: var(--muted-foreground);
+  white-space: nowrap;
 }
 .nav a.active { background: var(--primary); color: var(--primary-foreground); }
 .nav a:hover:not(.active) { color: var(--foreground); }
-.header-actions { display: flex; align-items: center; gap: 12px; }
+.header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
 .btn {
   display: inline-block;
@@ -93,23 +100,14 @@ h1, h2, h3, .display {
 .link-muted:hover { color: var(--foreground); }
 
 /* Hero */
-.hero { border-bottom: 1px solid var(--border); padding: 64px 0; }
+.hero { border-bottom: 1px solid var(--border); padding: 56px 0; }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent); margin: 0; }
-.hero h1 { font-size: 52px; line-height: 1.05; margin: 12px 0 0; font-weight: 700; }
+.hero h1 { font-size: 48px; line-height: 1.1; margin: 0; font-weight: 700; }
 .hero h1 em { color: var(--primary); font-style: italic; }
-.hero p { max-width: 520px; margin: 20px 0 0; color: var(--muted-foreground); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
-.chip {
-  border: 1px solid var(--border);
-  background: var(--card);
-  padding: 7px 16px;
-  border-radius: 999px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: var(--muted-foreground);
+@media (max-width: 480px) {
+  .hero { padding: 40px 0; }
+  .hero h1 { font-size: 36px; }
 }
-.chip:hover { border-color: var(--primary); color: var(--foreground); }
 
 /* Gallery */
 .section { padding: 40px 0; }
