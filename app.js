@@ -257,7 +257,9 @@ async function renderCategory(categoryKey) {
 
   let entries = [];
   try {
-    entries = (await getEntries()).filter((e) => e.category === categoryKey);
+    // Newest first, same approach as the home page: reverse the fetch
+    // order rather than parsing timestamps.
+    entries = (await getEntries()).filter((e) => e.category === categoryKey).reverse();
   } catch (err) {
     target.innerHTML = `<div class="empty error">${escapeHtml(err.message)}</div>`;
     return;
