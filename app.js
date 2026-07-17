@@ -139,54 +139,6 @@ async function router() {
 window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", router);
 
-// ---------- Grid column preference (mobile: 2/3, desktop: 5/6) ----------
-const COL_KEY_MOBILE = "pcd_cols_mobile";
-const COL_KEY_DESKTOP = "pcd_cols_desktop";
-
-function getMobileCols() { return Number(localStorage.getItem(COL_KEY_MOBILE)) || 2; }
-function getDesktopCols() { return Number(localStorage.getItem(COL_KEY_DESKTOP)) || 5; }
-
-function applyColumnVars() {
-  document.documentElement.style.setProperty("--mobile-cols", getMobileCols());
-  document.documentElement.style.setProperty("--desktop-cols", getDesktopCols());
-}
-applyColumnVars();
-
-function columnToggleHtml() {
-  const mobileCols = getMobileCols();
-  const desktopCols = getDesktopCols();
-  return `
-    <div class="col-toggle-wrap col-toggle-mobile">
-      <span class="col-toggle-label">Columns</span>
-      <div class="col-toggle-group" data-target="mobile">
-        <button data-cols="2" class="${mobileCols === 2 ? "active" : ""}">2</button>
-        <button data-cols="3" class="${mobileCols === 3 ? "active" : ""}">3</button>
-      </div>
-    </div>
-    <div class="col-toggle-wrap col-toggle-desktop">
-      <span class="col-toggle-label">Columns</span>
-      <div class="col-toggle-group" data-target="desktop">
-        <button data-cols="5" class="${desktopCols === 5 ? "active" : ""}">5</button>
-        <button data-cols="6" class="${desktopCols === 6 ? "active" : ""}">6</button>
-      </div>
-    </div>`;
-}
-
-function wireColumnToggle(root = document) {
-  root.querySelectorAll(".col-toggle-group").forEach((group) => {
-    const target = group.dataset.target;
-    group.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const cols = Number(btn.dataset.cols);
-        if (target === "mobile") localStorage.setItem(COL_KEY_MOBILE, cols);
-        else localStorage.setItem(COL_KEY_DESKTOP, cols);
-        applyColumnVars();
-        group.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
-      });
-    });
-  });
-}
-
 // ---------- Shared header ----------
 function headerHtml() {
   const route = parseHash();
@@ -250,10 +202,7 @@ async function renderHome() {
       <div class="wrap">
         <div class="section-head">
           <h2 class="display">Recently logged</h2>
-          <div class="section-head-right">
-            <span class="count" id="entryCount"></span>
-            ${columnToggleHtml()}
-          </div>
+          <span class="count" id="entryCount"></span>
         </div>
         <div id="galleryTarget"><p class="loading-text">Loading…</p></div>
       </div>
@@ -261,7 +210,6 @@ async function renderHome() {
     <footer class="footer"><div class="wrap">Venkey&rsquo;s Vault · A personal journal</div></footer>
   `;
   wireHeader();
-  wireColumnToggle();
 
   const target = document.getElementById("galleryTarget");
   try {
@@ -294,17 +242,13 @@ async function renderCategory(categoryKey) {
     ${headerHtml()}
     <section class="section">
       <div class="wrap">
-        <div class="section-head">
-          <h1 class="display">${cat.label}</h1>
-          <div class="section-head-right">${columnToggleHtml()}</div>
-        </div>
+        <h1 class="display">${cat.label}</h1>
         <div class="filters" id="filters"></div>
         <div id="galleryTarget"><p class="loading-text">Loading…</p></div>
       </div>
     </section>
   `;
   wireHeader();
-  wireColumnToggle();
 
   const statuses = ["All", ...cat.statusOptions];
   let activeStatus = "All";
