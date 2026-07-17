@@ -12,6 +12,7 @@ const CATEGORIES = [
   { key: "anime", label: "Anime", statusOptions: ["Watching", "Completed", "Plan to Watch"], fields: ["season", "episode"] },
   { key: "books", label: "Books", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: [] },
   { key: "manga", label: "Manga", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: ["chapter"] },
+  { key: "comics", label: "Comics", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: ["chapter"] },
   { key: "games", label: "Games", statusOptions: ["Playing", "Completed", "Plan to Play"], fields: ["platform"] },
 ];
 const PLATFORM_OPTIONS = ["PC", "Mobile"];
@@ -25,7 +26,7 @@ function progressLabel(entry) {
     if (entry.season) parts.push(`S${entry.season}`);
     if (entry.episode) parts.push(`E${entry.episode}`);
   }
-  if (entry.category === "manga" && entry.chapter) parts.push(`Ch. ${entry.chapter}`);
+  if ((entry.category === "manga" || entry.category === "comics") && entry.chapter) parts.push(`Ch. ${entry.chapter}`);
   if (entry.category === "games" && entry.platform) parts.push(entry.platform);
   return parts.length ? parts.join(" · ") : "";
 }
