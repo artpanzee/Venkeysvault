@@ -55,7 +55,8 @@ h1, h2, h3, .display {
   scrollbar-width: none;
 }
 .header-nav-row::-webkit-scrollbar { display: none; }
-.logo { font-size: 22px; font-weight: 600; white-space: nowrap; }
+.logo { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 600; white-space: nowrap; }
+.logo-icon { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
 .nav { display: flex; gap: 4px; width: max-content; }
 .nav a {
   padding: 6px 14px;
@@ -222,7 +223,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 /* Login */
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 .login-box { width: 100%; max-width: 360px; padding: 24px; }
-.login-box .logo { display: block; margin-bottom: 32px; font-size: 30px; }
+.login-box .logo { display: flex; margin-bottom: 32px; font-size: 30px; }
+.login-box .logo-icon { width: 36px; height: 36px; }
 .login-box h1 { font-size: 30px; margin: 0; }
 .login-box .sub { color: var(--muted-foreground); font-size: 14px; margin-top: 8px; }
 
