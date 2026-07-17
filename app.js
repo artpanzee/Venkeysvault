@@ -155,7 +155,7 @@ function headerHtml() {
   return `
     <header class="site-header">
       <div class="wrap header-top">
-        <a href="#/" class="logo display">Venkey&rsquo;s Vault</a>
+        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" />Venkey&rsquo;s Vault</a>
         <div class="header-actions">${actions}</div>
       </div>
       <div class="wrap header-nav-row">
@@ -335,7 +335,7 @@ function renderLogin() {
   app.innerHTML = `
     <div class="login-wrap">
       <div class="login-box">
-        <a href="#/" class="logo display">Venkey&rsquo;s Vault</a>
+        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" />Venkey&rsquo;s Vault</a>
         <h1 class="display">Sign in</h1>
         <p class="sub">Enter the owner password to add or edit entries.</p>
         <form id="loginForm" style="margin-top:32px;">
