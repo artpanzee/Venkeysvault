@@ -8,14 +8,20 @@ const API_URL = "https://script.google.com/macros/s/AKfycbxDTMvfxgoLixii99mfGJtc
 // ---------- Category config ----------
 const CATEGORIES = [
   { key: "movies", label: "Movies", statusOptions: ["Watched", "Plan to Watch"], fields: [] },
-  { key: "tvshows", label: "TV Shows", statusOptions: ["Watching", "Completed", "Plan to Watch"], fields: ["season", "episode"] },
-  { key: "anime", label: "Anime", statusOptions: ["Watching", "Completed", "Plan to Watch"], fields: ["season", "episode"] },
+  { key: "tvshows", label: "TV Shows", statusOptions: ["Watching", "On Hold", "Completed", "Plan to Watch"], fields: ["season", "episode"] },
+  { key: "anime", label: "Anime", statusOptions: ["Watching", "On Hold", "Completed", "Plan to Watch"], fields: ["season", "episode"] },
   { key: "books", label: "Books", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: [] },
-  { key: "manga", label: "Manga", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: ["chapter"] },
-  { key: "comics", label: "Comics", statusOptions: ["Reading", "Completed", "Plan to Read"], fields: ["chapter"] },
-  { key: "games", label: "Games", statusOptions: ["Playing", "Completed", "Plan to Play"], fields: ["platform"] },
+  { key: "manga", label: "Manga", statusOptions: ["Reading", "On Hold", "Completed", "Plan to Read"], fields: ["chapter"] },
+  { key: "comics", label: "Comics", statusOptions: ["Reading", "On Hold", "Completed", "Plan to Read"], fields: ["chapter"] },
+  { key: "games", label: "Games", statusOptions: ["Playing", "On Hold", "Completed", "Plan to Play"], fields: ["platform"] },
 ];
 const PLATFORM_OPTIONS = ["PC", "Mobile"];
+
+// Statuses that count as "actively going through it right now" — used to
+// build the homepage's "Currently in progress" section. "On Hold" is
+// deliberately excluded: it means paused, not in progress.
+const IN_PROGRESS_STATUSES = ["Watching", "Reading", "Playing"];
+function isInProgress(entry) { return IN_PROGRESS_STATUSES.includes(entry.status); }
 
 function getCategory(key) { return CATEGORIES.find((c) => c.key === key); }
 function categoryLabel(key) { return getCategory(key)?.label ?? key; }
@@ -202,7 +208,16 @@ async function renderHome() {
     <section class="section">
       <div class="wrap">
         <div class="section-head">
-          <h2 class="display">Recently logged</h2>
+          <h2 class="display">Currently in progress</h2>
+          <span class="count" id="progressCount"></span>
+        </div>
+        <div id="progressTarget"><p class="loading-text">Loading…</p></div>
+      </div>
+    </section>
+    <section class="section section-mini">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 class="display-mini">Recently logged</h2>
           <span class="count" id="entryCount"></span>
         </div>
         <div id="galleryTarget"><p class="loading-text">Loading…</p></div>
@@ -212,22 +227,34 @@ async function renderHome() {
   `;
   wireHeader();
 
-  const target = document.getElementById("galleryTarget");
+  const progressTarget = document.getElementById("progressTarget");
+  const galleryTarget = document.getElementById("galleryTarget");
   try {
     const entries = await getEntries();
     // Newest first: entries always get appended to the bottom of the Sheet,
     // so reversing the fetch order is more reliable than parsing timestamps
     // (which can misbehave if Sheets reformats a date-looking string).
-    const sorted = [...entries].reverse();
+    const reversed = [...entries].reverse();
+
+    // Primary section: anything actively Watching/Reading/Playing right now.
+    const inProgress = reversed.filter(isInProgress);
+    document.getElementById("progressCount").textContent = `${inProgress.length} entries`;
+    progressTarget.innerHTML = inProgress.length
+      ? `<div class="grid">${inProgress.map(entryCardHtml).join("")}</div>`
+      : `<div class="empty">Nothing in progress right now. Add an entry, or mark one as Watching/Reading/Playing.</div>`;
+
+    // Secondary, smaller section: just the raw recent activity feed.
     const HOME_LIMIT = 12;
-    const shown = sorted.slice(0, HOME_LIMIT);
+    const shown = reversed.slice(0, HOME_LIMIT);
     document.getElementById("entryCount").textContent =
-      sorted.length > HOME_LIMIT ? `${shown.length} of ${sorted.length} entries` : `${sorted.length} entries`;
-    target.innerHTML = shown.length
-      ? `<div class="grid">${shown.map(entryCardHtml).join("")}</div>`
+      reversed.length > HOME_LIMIT ? `${shown.length} of ${reversed.length} entries` : `${reversed.length} entries`;
+    galleryTarget.innerHTML = shown.length
+      ? `<div class="grid grid-mini">${shown.map(entryCardHtml).join("")}</div>`
       : `<div class="empty">The ledger is empty. Sign in and add your first entry.</div>`;
   } catch (err) {
-    target.innerHTML = `<div class="empty error">${escapeHtml(err.message)}</div>`;
+    const msg = `<div class="empty error">${escapeHtml(err.message)}</div>`;
+    progressTarget.innerHTML = msg;
+    galleryTarget.innerHTML = msg;
   }
 }
 
