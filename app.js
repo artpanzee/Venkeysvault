@@ -23,6 +23,24 @@ const PLATFORM_OPTIONS = ["PC", "Mobile"];
 const IN_PROGRESS_STATUSES = ["Watching", "Reading", "Playing"];
 function isInProgress(entry) { return IN_PROGRESS_STATUSES.includes(entry.status); }
 
+// Color-coding: green = in progress, amber = on hold, purple = plan to X,
+// red = completed (Movies' "Watched" counts as completed too).
+function statusColorClass(status) {
+  if (IN_PROGRESS_STATUSES.includes(status)) return "status-progress";
+  if (status === "On Hold") return "status-hold";
+  if (status.startsWith("Plan to")) return "status-plan";
+  return "status-completed"; // Completed, Watched
+}
+
+// Priority grouping for the category page's "All" tab: in progress, then on
+// hold, then plan-to-x, then completed/watched. Lower number = shown first.
+function statusPriority(status) {
+  if (IN_PROGRESS_STATUSES.includes(status)) return 0;
+  if (status === "On Hold") return 1;
+  if (status.startsWith("Plan to")) return 2;
+  return 3;
+}
+
 function getCategory(key) { return CATEGORIES.find((c) => c.key === key); }
 function categoryLabel(key) { return getCategory(key)?.label ?? key; }
 
@@ -186,7 +204,7 @@ function entryCardHtml(entry) {
     <a href="#/e/${entry.id}">
       <div class="card-poster">
         ${img}
-        <div class="status-tag">${escapeHtml(entry.status)}</div>
+        <div class="status-tag ${statusColorClass(entry.status)}">${escapeHtml(entry.status)}</div>
       </div>
       <div class="card-title display">${escapeHtml(entry.title)}</div>
       <div class="card-meta">
@@ -307,7 +325,12 @@ async function renderCategory(categoryKey) {
   }
 
   function renderList() {
-    const filtered = activeStatus === "All" ? entries : entries.filter((e) => e.status === activeStatus);
+    // "All" tab: group by priority (in progress > on hold > plan to x >
+    // completed/watched). Array.sort is stable, so the existing
+    // newest-first order is preserved within each group.
+    const filtered = activeStatus === "All"
+      ? [...entries].sort((a, b) => statusPriority(a.status) - statusPriority(b.status))
+      : entries.filter((e) => e.status === activeStatus);
     target.innerHTML = filtered.length
       ? `<div class="grid">${filtered.map(entryCardHtml).join("")}</div>`
       : `<div class="empty">Nothing here yet.</div>`;
@@ -346,7 +369,7 @@ async function renderDetail(id) {
           <p class="eyebrow">${escapeHtml(categoryLabel(entry.category))}</p>
           <h1 class="display">${escapeHtml(entry.title)}</h1>
           <div class="detail-tags">
-            <span class="status-badge">${escapeHtml(entry.status)}</span>
+            <span class="status-badge ${statusColorClass(entry.status)}">${escapeHtml(entry.status)}</span>
             ${progress ? `<span>${escapeHtml(progress)}</span>` : ""}
             ${starsHtml(entry.rating)}
           </div>
