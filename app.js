@@ -204,7 +204,7 @@ function entryCardHtml(entry) {
     <a href="#/e/${entry.id}">
       <div class="card-poster">
         ${img}
-        <div class="status-tag ${statusColorClass(entry.status)}">${escapeHtml(entry.status)}</div>
+        <div class="status-tag ${statusColorClass(entry.status)}" title="${escapeHtml(entry.status)}"><span class="sr-only">${escapeHtml(entry.status)}</span></div>
       </div>
       <div class="card-title display">${escapeHtml(entry.title)}</div>
       <div class="card-meta">
