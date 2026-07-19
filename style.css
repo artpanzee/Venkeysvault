@@ -144,7 +144,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .grid-mini .card-title { font-size: 11px; margin: 6px 0 1px; }
 .grid-mini .card-progress { font-size: 10px; }
 .grid-mini .stars { font-size: 10px; }
-.grid-mini .status-tag { font-size: 8px; padding: 20px 6px 6px; letter-spacing: 0.08em; }
+.grid-mini .status-tag { font-size: 8px; padding: 4px 4px; letter-spacing: 0.06em; }
 
 .card-poster {
   position: relative;
@@ -164,14 +164,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 .card-poster .status-tag {
   position: absolute; left: 0; right: 0; bottom: 0;
-  padding: 32px 12px 10px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700;
+  color: #fff;
 }
-.status-tag.status-progress { color: var(--status-progress); }
-.status-tag.status-hold { color: var(--status-hold); }
-.status-tag.status-plan { color: var(--status-plan); }
-.status-tag.status-completed { color: var(--destructive); }
+.status-tag.status-progress { background: var(--status-progress); }
+.status-tag.status-hold { background: var(--status-hold); }
+.status-tag.status-plan { background: var(--status-plan); }
+.status-tag.status-completed { background: var(--destructive); }
 .card-title {
   margin: 8px 0 2px;
   font-size: 14px;
