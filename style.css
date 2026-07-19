@@ -12,6 +12,9 @@
   --border: #3c3f42;
   --input: #2f3235;
   --gold: #e0c07d;
+  --status-progress: #6fbf73;
+  --status-hold: #e0a83f;
+  --status-plan: #a988d9;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Playfair Display", "Times New Roman", serif;
 }
@@ -163,8 +166,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 32px 12px 10px;
   background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: rgba(255,255,255,0.75);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
 }
+.status-tag.status-progress { color: var(--status-progress); }
+.status-tag.status-hold { color: var(--status-hold); }
+.status-tag.status-plan { color: var(--status-plan); }
+.status-tag.status-completed { color: var(--destructive); }
 .card-title {
   margin: 8px 0 2px;
   font-size: 14px;
@@ -232,8 +239,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .detail-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; color: var(--muted-foreground); font-size: 14px; }
 .status-badge {
   border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
 }
+.status-badge.status-progress { color: var(--status-progress); border-color: var(--status-progress); }
+.status-badge.status-hold { color: var(--status-hold); border-color: var(--status-hold); }
+.status-badge.status-plan { color: var(--status-plan); border-color: var(--status-plan); }
+.status-badge.status-completed { color: var(--destructive); border-color: var(--destructive); }
 .review-text { margin-top: 24px; max-width: 560px; line-height: 1.7; white-space: pre-wrap; }
 
 /* Login */
