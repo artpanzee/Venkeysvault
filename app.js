@@ -174,6 +174,7 @@ function headerHtml() {
 
   const actions = isAuthed()
     ? `<a href="#/add" class="btn btn-primary">+ Add entry</a>
+       <button class="link-muted" id="exportCsvBtn">Export CSV</button>
        <button class="link-muted" id="signOutBtn">Sign out</button>`
     : `<a href="#/login" class="btn">Sign in</a>`;
 
@@ -192,6 +193,52 @@ function headerHtml() {
 function wireHeader() {
   const btn = document.getElementById("signOutBtn");
   if (btn) btn.addEventListener("click", () => { clearAuth(); navigate("/"); });
+
+  const exportBtn = document.getElementById("exportCsvBtn");
+  if (exportBtn) exportBtn.addEventListener("click", downloadEntriesCsv);
+}
+
+// ---------- CSV export (signed-in only) ----------
+const CSV_COLUMNS = [
+  "category", "title", "status", "season", "episode", "chapter", "platform",
+  "rating", "review", "imageUrl", "createdAt", "updatedAt",
+];
+
+function csvEscape(value) {
+  const str = String(value ?? "");
+  // Quote any field containing a comma, quote, or newline; double up inner quotes.
+  if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+function entriesToCsv(entries) {
+  const header = CSV_COLUMNS.join(",");
+  const rows = entries.map((e) => CSV_COLUMNS.map((col) => csvEscape(e[col])).join(","));
+  return [header, ...rows].join("\n");
+}
+
+async function downloadEntriesCsv() {
+  const exportBtn = document.getElementById("exportCsvBtn");
+  const original = exportBtn?.textContent;
+  if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = "Exporting…"; }
+  try {
+    const entries = await getEntries();
+    const csv = entriesToCsv(entries);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `venkeys-vault-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(`Could not export CSV: ${err.message}`);
+  } finally {
+    if (exportBtn) { exportBtn.disabled = false; exportBtn.textContent = original; }
+  }
 }
 
 // ---------- Entry card ----------
