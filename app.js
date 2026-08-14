@@ -60,6 +60,7 @@ function emptyEntry(category) {
   return {
     id: "", category, title: "", imageUrl: "", status: cat.statusOptions[0],
     season: "", episode: "", chapter: "", platform: "", rating: "", review: "",
+    externalSource: "", externalId: "", externalTitle: "",
   };
 }
 
@@ -241,6 +242,317 @@ async function downloadEntriesCsv() {
   }
 }
 
+// ---------- New episode check (AniList for anime, TVmaze for TV shows) ----------
+// Both public APIs, callable directly from the browser (CORS-friendly, no
+// API key). On-demand only (button click), not automatic.
+//
+// Accuracy strategy: fuzzy title search is unreliable for uncommon or
+// ambiguous titles, so instead of auto-trusting a "best guess," entries are
+// checked by exact database ID once linked (entry.externalSource /
+// externalId / externalTitle, persisted to the Sheet). Unlinked entries show
+// a "Find match" picker (top candidates) instead of a possibly-wrong result.
+
+const EXPECTED_SOURCE = { anime: "anilist", tvshows: "tvmaze" };
+
+function isLinked(entry) {
+  return !!entry.externalId && entry.externalSource === EXPECTED_SOURCE[entry.category];
+}
+
+// ----- Direct-by-ID lookups (used once an entry is linked) -----
+
+async function fetchAniListById(id) {
+  const query = `query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+      title { romaji english }
+      status
+      episodes
+      nextAiringEpisode { episode }
+    }
+  }`;
+  const res = await fetch("https://graphql.anilist.co", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ query, variables: { id: Number(id) } }),
+  });
+  if (!res.ok) throw new Error("AniList request failed");
+  const json = await res.json();
+  const media = json?.data?.Media;
+  if (!media) return null;
+  let latestEpisode = 0;
+  if (media.nextAiringEpisode) latestEpisode = media.nextAiringEpisode.episode - 1;
+  else if (media.status === "FINISHED" && media.episodes) latestEpisode = media.episodes;
+  return { title: media.title.english || media.title.romaji, latestEpisode };
+}
+
+async function fetchTVMazeById(id) {
+  const res = await fetch(`https://api.tvmaze.com/shows/${id}?embed=episodes`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("TVmaze request failed");
+  const show = await res.json();
+  const episodes = show?._embedded?.episodes || [];
+  const today = new Date();
+  const aired = episodes.filter((ep) => ep.airdate && new Date(ep.airdate) <= today);
+  if (!aired.length) return { title: show.name, latestSeason: 0, latestEpisode: 0 };
+  const latest = aired.reduce((a, b) => {
+    if (a.season !== b.season) return a.season > b.season ? a : b;
+    return a.number > b.number ? a : b;
+  });
+  return { title: show.name, latestSeason: latest.season, latestEpisode: latest.number };
+}
+
+// ----- Candidate search (used to link an entry) -----
+
+async function searchAniListCandidates(title) {
+  const query = `query ($search: String, $perPage: Int) {
+    Page(perPage: $perPage) {
+      media(search: $search, type: ANIME) {
+        id
+        title { romaji english }
+        startDate { year }
+        format
+      }
+    }
+  }`;
+  const res = await fetch("https://graphql.anilist.co", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ query, variables: { search: title, perPage: 5 } }),
+  });
+  if (!res.ok) throw new Error("AniList search failed");
+  const json = await res.json();
+  const list = json?.data?.Page?.media || [];
+  return list.map((m) => ({
+    id: m.id,
+    source: "anilist",
+    title: m.title.english || m.title.romaji,
+    year: m.startDate?.year || "—",
+    meta: m.format || "",
+  }));
+}
+
+async function searchTVMazeCandidates(title) {
+  const res = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`);
+  if (!res.ok) throw new Error("TVmaze search failed");
+  const json = await res.json();
+  return json.slice(0, 5).map((r) => ({
+    id: r.show.id,
+    source: "tvmaze",
+    title: r.show.name,
+    year: r.show.premiered ? r.show.premiered.slice(0, 4) : "—",
+    meta: r.show.type || "",
+  }));
+}
+
+async function searchCandidates(entry) {
+  if (entry.category === "anime") return searchAniListCandidates(entry.title);
+  if (entry.category === "tvshows") return searchTVMazeCandidates(entry.title);
+  return [];
+}
+
+// ----- Comparison result for a linked entry -----
+
+async function checkLinkedEntry(entry) {
+  try {
+    if (entry.category === "anime") {
+      const r = await fetchAniListById(entry.externalId);
+      if (!r) return { status: "error", detail: "Linked anime not found on AniList anymore." };
+      const logged = Number(entry.episode) || 0;
+      if (r.latestEpisode > logged) {
+        return { status: "new", detail: `Latest: Ep ${r.latestEpisode} · you're at Ep ${logged || "—"}` };
+      }
+      return { status: "upToDate", detail: `Caught up through Ep ${logged || 0}` };
+    }
+    if (entry.category === "tvshows") {
+      const r = await fetchTVMazeById(entry.externalId);
+      if (!r) return { status: "error", detail: "Linked show not found on TVmaze anymore." };
+      const loggedSeason = Number(entry.season) || 0;
+      const loggedEpisode = Number(entry.episode) || 0;
+      const isNewer = r.latestSeason > loggedSeason || (r.latestSeason === loggedSeason && r.latestEpisode > loggedEpisode);
+      if (isNewer) {
+        return { status: "new", detail: `Latest: S${r.latestSeason}E${r.latestEpisode} · you're at S${loggedSeason}E${loggedEpisode}` };
+      }
+      return { status: "upToDate", detail: `Caught up through S${loggedSeason}E${loggedEpisode}` };
+    }
+    return { status: "error", detail: "Unsupported category." };
+  } catch (err) {
+    return { status: "error", detail: "Check failed — try again later." };
+  }
+}
+
+// ----- Rendering + state for the check panel -----
+// epCheckState: array of { entry, result, candidates, loadingCandidates }
+let epCheckState = [];
+
+function epBadge(status) {
+  return {
+    new: "🟢 New episode",
+    upToDate: "⚪ Up to date",
+    unlinked: "🔗 Not linked",
+    error: "⚠️ Check failed",
+  }[status];
+}
+
+function renderEpCheckResults() {
+  const resultsEl = document.getElementById("episodeCheckResults");
+  if (!resultsEl) return;
+
+  resultsEl.innerHTML = `<div class="ep-check-list">${epCheckState
+    .map((item, idx) => {
+      const { entry, result, candidates, loadingCandidates } = item;
+
+      if (candidates) {
+        const list = candidates.length
+          ? candidates
+              .map(
+                (c) => `
+              <button class="ep-candidate" data-action="link" data-idx="${idx}" data-cid="${c.id}" data-source="${c.source}">
+                ${escapeHtml(c.title)} <span class="ep-candidate-year">(${escapeHtml(String(c.year))}${c.meta ? " · " + escapeHtml(c.meta) : ""})</span>
+              </button>`,
+              )
+              .join("")
+          : `<p class="ep-check-detail">No results found. Try adjusting the entry's title.</p>`;
+        return `
+          <div class="ep-check-row ep-check-row-open">
+            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+            <span class="ep-check-badge ep-unlinked">${epBadge("unlinked")}</span>
+            <button class="ep-cancel" data-action="cancel-find" data-idx="${idx}">Cancel</button>
+            <div class="ep-candidate-list">${list}</div>
+          </div>`;
+      }
+
+      if (loadingCandidates) {
+        return `
+          <div class="ep-check-row">
+            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+            <span class="ep-check-detail">Searching…</span>
+          </div>`;
+      }
+
+      if (!isLinked(entry)) {
+        const findBtn = isAuthed()
+          ? `<button class="ep-find-btn" data-action="find" data-idx="${idx}">Find match</button>`
+          : `<span class="ep-check-detail">Sign in to link this match</span>`;
+        return `
+          <div class="ep-check-row">
+            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+            <span class="ep-check-badge ep-unlinked">${epBadge("unlinked")}</span>
+            ${findBtn}
+          </div>`;
+      }
+
+      if (!result) {
+        return `
+          <div class="ep-check-row">
+            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+            <span class="ep-check-detail">Checking…</span>
+          </div>`;
+      }
+
+      const relink = isAuthed()
+        ? `<button class="ep-cancel" data-action="find" data-idx="${idx}">Change match</button>`
+        : "";
+      return `
+        <div class="ep-check-row">
+          <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+          <span class="ep-check-badge ep-${result.status}">${epBadge(result.status)}</span>
+          <span class="ep-check-detail">${escapeHtml(result.detail)} · linked: ${escapeHtml(entry.externalTitle || "")}</span>
+          ${relink}
+        </div>`;
+    })
+    .join("")}</div>`;
+}
+
+async function handleEpCheckClick(e) {
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const idx = Number(btn.dataset.idx);
+  const item = epCheckState[idx];
+  if (!item) return;
+
+  if (btn.dataset.action === "find") {
+    item.candidates = null;
+    item.loadingCandidates = true;
+    renderEpCheckResults();
+    try {
+      item.candidates = await searchCandidates(item.entry);
+    } catch (err) {
+      item.candidates = [];
+    }
+    item.loadingCandidates = false;
+    renderEpCheckResults();
+    return;
+  }
+
+  if (btn.dataset.action === "cancel-find") {
+    item.candidates = null;
+    renderEpCheckResults();
+    return;
+  }
+
+  if (btn.dataset.action === "link") {
+    const cid = btn.dataset.cid;
+    const source = btn.dataset.source;
+    const candidate = item.candidates.find((c) => String(c.id) === cid && c.source === source);
+    if (!candidate) return;
+    btn.disabled = true;
+    try {
+      await apiUpdateEntry(
+        item.entry.id,
+        { externalSource: source, externalId: candidate.id, externalTitle: candidate.title },
+        getAuthPassword(),
+      );
+      item.entry = { ...item.entry, externalSource: source, externalId: candidate.id, externalTitle: candidate.title };
+      item.candidates = null;
+      entriesCache = null; // sheet changed, refresh next full fetch
+      renderEpCheckResults();
+      item.result = await checkLinkedEntry(item.entry);
+      renderEpCheckResults();
+    } catch (err) {
+      alert(`Could not link match: ${err.message}`);
+    }
+  }
+}
+
+async function runEpisodeCheck() {
+  const btn = document.getElementById("episodeCheckBtn");
+  const resultsEl = document.getElementById("episodeCheckResults");
+  if (!btn || !resultsEl) return;
+
+  let entries;
+  try {
+    entries = await getEntries();
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="empty error">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+
+  const targets = entries.filter(
+    (e) => (e.category === "tvshows" || e.category === "anime") && (e.status === "Watching" || e.status === "On Hold"),
+  );
+  if (!targets.length) {
+    resultsEl.innerHTML = `<div class="empty">No Watching or On Hold shows/anime to check.</div>`;
+    return;
+  }
+
+  epCheckState = targets.map((entry) => ({ entry, result: null, candidates: null, loadingCandidates: false }));
+  resultsEl.removeEventListener("click", handleEpCheckClick);
+  resultsEl.addEventListener("click", handleEpCheckClick);
+  renderEpCheckResults();
+
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  for (let i = 0; i < epCheckState.length; i++) {
+    const item = epCheckState[i];
+    if (isLinked(item.entry)) {
+      btn.textContent = `Checking ${i + 1} of ${epCheckState.length}…`;
+      item.result = await checkLinkedEntry(item.entry);
+      renderEpCheckResults();
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = originalText;
+}
+
 // ---------- Entry card ----------
 function entryCardHtml(entry) {
   const progress = progressLabel(entry);
@@ -279,6 +591,16 @@ async function renderHome() {
         <div id="progressTarget"><p class="loading-text">Loading…</p></div>
       </div>
     </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 class="display">New episode check</h2>
+        </div>
+        <p class="ep-check-desc">Checks your Watching / On Hold TV shows and anime against AniList and TVmaze for episodes you haven't logged yet.</p>
+        <button class="btn" id="episodeCheckBtn">Check for updates</button>
+        <div id="episodeCheckResults"></div>
+      </div>
+    </section>
     <section class="section section-mini">
       <div class="wrap">
         <div class="section-head">
@@ -291,6 +613,7 @@ async function renderHome() {
     <footer class="footer"><div class="wrap">Venkey&rsquo;s Vault · A personal journal</div></footer>
   `;
   wireHeader();
+  document.getElementById("episodeCheckBtn").addEventListener("click", runEpisodeCheck);
 
   const progressTarget = document.getElementById("progressTarget");
   const galleryTarget = document.getElementById("galleryTarget");
