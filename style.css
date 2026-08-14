@@ -197,6 +197,37 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 .empty.error { border-color: var(--destructive); color: var(--destructive); }
 
+/* New episode check */
+.ep-check-desc { font-size: 13px; color: var(--muted-foreground); max-width: 520px; margin: 0 0 16px; }
+.ep-check-list { margin-top: 20px; display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius); overflow: hidden; }
+.ep-check-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  background: var(--card); padding: 12px 16px;
+}
+.ep-check-title { font-weight: 600; font-size: 14px; flex-shrink: 0; }
+.ep-check-title:hover { color: var(--primary); }
+.ep-check-badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; flex-shrink: 0; }
+.ep-check-badge.ep-new { color: var(--status-progress); }
+.ep-check-badge.ep-upToDate { color: var(--muted-foreground); }
+.ep-check-badge.ep-unlinked { color: var(--status-plan); }
+.ep-check-badge.ep-error { color: var(--status-hold); }
+.ep-check-detail { font-size: 12px; color: var(--muted-foreground); }
+
+.ep-find-btn, .ep-cancel {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+  background: none; border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 12px; color: var(--foreground); cursor: pointer;
+}
+.ep-find-btn:hover, .ep-cancel:hover { border-color: var(--primary); }
+.ep-check-row-open { flex-direction: column; align-items: flex-start; }
+.ep-candidate-list { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 8px; }
+.ep-candidate {
+  text-align: left; background: var(--input); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; font-size: 13px; color: var(--foreground); cursor: pointer;
+}
+.ep-candidate:hover { border-color: var(--primary); }
+.ep-candidate-year { color: var(--muted-foreground); font-size: 12px; }
+
 /* Filters */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
 .filter-btn {
