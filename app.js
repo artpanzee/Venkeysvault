@@ -181,8 +181,7 @@ function headerHtml() {
        <a href="#/updates" class="link-muted ${active}">Updates</a>
        <button class="link-muted" id="exportCsvBtn">Export CSV</button>
        <button class="link-muted" id="signOutBtn">Sign out</button>`
-    : `<a href="#/updates" class="link-muted ${active}">Updates</a>
-       <a href="#/login" class="btn">Sign in</a>`;
+    : `<a href="#/login" class="btn">Sign in</a>`;
 
   return `
     <header class="site-header">
@@ -256,8 +255,14 @@ async function downloadEntriesCsv() {
 // checked by exact database ID once linked (entry.externalSource /
 // externalId / externalTitle, persisted to the Sheet). Unlinked entries show
 // a "Find match" picker (top candidates) instead of a possibly-wrong result.
+//
+// Anime uses TMDB rather than AniList: TMDB groups a show's seasons under
+// one ID (like TVmaze does for Western TV), which sidesteps AniList's
+// per-season-is-a-different-entry structure — no season-to-season relinking
+// needed once a show is linked.
 
-const EXPECTED_SOURCE = { anime: "anilist", tvshows: "tvmaze" };
+const TMDB_API_KEY = "885cb36574611c34f3b88684f4df0111";
+const EXPECTED_SOURCE = { anime: "tmdb", tvshows: "tvmaze" };
 
 function isLinked(entry) {
   return !!entry.externalId && entry.externalSource === EXPECTED_SOURCE[entry.category];
@@ -265,47 +270,16 @@ function isLinked(entry) {
 
 // ----- Direct-by-ID lookups (used once an entry is linked) -----
 
-async function fetchAniListById(id) {
-  const query = `query ($id: Int) {
-    Media(id: $id, type: ANIME) {
-      title { romaji english }
-      status
-      episodes
-      nextAiringEpisode { episode }
-      relations {
-        edges {
-          relationType
-          node { id type title { romaji english } }
-        }
-      }
-    }
-  }`;
-  const res = await fetch("https://graphql.anilist.co", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ query, variables: { id: Number(id) } }),
-  });
-  if (!res.ok) throw new Error("AniList request failed");
-  const json = await res.json();
-  const media = json?.data?.Media;
-  if (!media) return null;
-  let latestEpisode = 0;
-  if (media.nextAiringEpisode) latestEpisode = media.nextAiringEpisode.episode - 1;
-  else if (media.status === "FINISHED" && media.episodes) latestEpisode = media.episodes;
-
-  const sequelEdge = (media.relations?.edges || []).find(
-    (e) => e.relationType === "SEQUEL" && e.node.type === "ANIME",
-  );
-  const sequel = sequelEdge
-    ? { id: sequelEdge.node.id, title: sequelEdge.node.title.english || sequelEdge.node.title.romaji }
-    : null;
-
+async function fetchTMDBById(id) {
+  const res = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${TMDB_API_KEY}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("TMDB request failed");
+  const show = await res.json();
+  const last = show.last_episode_to_air;
   return {
-    title: media.title.english || media.title.romaji,
-    status: media.status,
-    totalEpisodes: media.episodes,
-    latestEpisode,
-    sequel,
+    title: show.name,
+    latestSeason: last ? last.season_number : 0,
+    latestEpisode: last ? last.episode_number : 0,
   };
 }
 
@@ -327,31 +301,16 @@ async function fetchTVMazeById(id) {
 
 // ----- Candidate search (used to link an entry) -----
 
-async function searchAniListCandidates(title) {
-  const query = `query ($search: String, $perPage: Int) {
-    Page(perPage: $perPage) {
-      media(search: $search, type: ANIME) {
-        id
-        title { romaji english }
-        startDate { year }
-        format
-      }
-    }
-  }`;
-  const res = await fetch("https://graphql.anilist.co", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-    body: JSON.stringify({ query, variables: { search: title, perPage: 5 } }),
-  });
-  if (!res.ok) throw new Error("AniList search failed");
+async function searchTMDBCandidates(title) {
+  const res = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`);
+  if (!res.ok) throw new Error("TMDB search failed");
   const json = await res.json();
-  const list = json?.data?.Page?.media || [];
-  return list.map((m) => ({
-    id: m.id,
-    source: "anilist",
-    title: m.title.english || m.title.romaji,
-    year: m.startDate?.year || "—",
-    meta: m.format || "",
+  return (json.results || []).slice(0, 5).map((r) => ({
+    id: r.id,
+    source: "tmdb",
+    title: r.name,
+    year: r.first_air_date ? r.first_air_date.slice(0, 4) : "—",
+    meta: r.origin_country?.[0] || "",
   }));
 }
 
@@ -369,52 +328,56 @@ async function searchTVMazeCandidates(title) {
 }
 
 async function searchCandidates(entry) {
-  if (entry.category === "anime") return searchAniListCandidates(entry.title);
+  if (entry.category === "anime") return searchTMDBCandidates(entry.title);
   if (entry.category === "tvshows") return searchTVMazeCandidates(entry.title);
   return [];
 }
 
 // ----- Comparison result for a linked entry -----
+// Same season+episode comparison for both anime (TMDB) and TV shows
+// (TVmaze), since both now group all seasons under one show ID.
+
+function compareSeasonEpisode(entry, r) {
+  const loggedSeason = Number(entry.season) || 0;
+  const loggedEpisode = Number(entry.episode) || 0;
+  const latestSeason = r.latestSeason || 0;
+  const latestEpisode = r.latestEpisode || 0;
+  const isNewer = latestSeason > loggedSeason || (latestSeason === loggedSeason && latestEpisode > loggedEpisode);
+  // "Episodes behind" is exact within the same season; across a season
+  // jump we can't know the previous season's total episode count from this
+  // data alone, so it's reported as at least the new season's episode count
+  // rather than guessing an exact cross-season total.
+  const behind = !isNewer ? 0 : latestSeason === loggedSeason ? latestEpisode - loggedEpisode : Math.max(1, latestEpisode);
+  return { isNewer, loggedSeason, loggedEpisode, latestSeason, latestEpisode, behind };
+}
 
 async function checkLinkedEntry(entry) {
   try {
-    if (entry.category === "anime") {
-      const r = await fetchAniListById(entry.externalId);
-      if (!r) return { status: "error", detail: "Linked anime not found on AniList anymore." };
-      const logged = Number(entry.episode) || 0;
-      if (r.latestEpisode > logged) {
-        return { status: "new", detail: `Latest: Ep ${r.latestEpisode} · you're at Ep ${logged || "—"}` };
-      }
-      // Fully caught up on this season. If it's finished and AniList lists a
-      // sequel, surface it so the person can link forward with one click
-      // instead of searching again.
-      const seasonDone = r.status === "FINISHED" && r.totalEpisodes && logged >= r.totalEpisodes;
-      if (seasonDone && r.sequel) {
-        return {
-          status: "sequelFound",
-          detail: `You've finished "${r.title}" (${r.totalEpisodes} eps). Next season found:`,
-          sequel: r.sequel,
-        };
-      }
-      if (seasonDone) {
-        return { status: "upToDate", detail: `Finished "${r.title}" (${r.totalEpisodes} eps) — no next season found yet.` };
-      }
-      return { status: "upToDate", detail: `Caught up through Ep ${logged || 0}` };
+    const source = EXPECTED_SOURCE[entry.category];
+    let r = null;
+    if (source === "tmdb") r = await fetchTMDBById(entry.externalId);
+    else if (source === "tvmaze") r = await fetchTVMazeById(entry.externalId);
+    else return { status: "error", detail: "Unsupported category.", behind: 0 };
+
+    if (!r) {
+      return { status: "error", detail: `Linked title not found on ${source === "tmdb" ? "TMDB" : "TVmaze"} anymore.`, behind: 0 };
     }
-    if (entry.category === "tvshows") {
-      const r = await fetchTVMazeById(entry.externalId);
-      if (!r) return { status: "error", detail: "Linked show not found on TVmaze anymore." };
-      const loggedSeason = Number(entry.season) || 0;
-      const loggedEpisode = Number(entry.episode) || 0;
-      const isNewer = r.latestSeason > loggedSeason || (r.latestSeason === loggedSeason && r.latestEpisode > loggedEpisode);
-      if (isNewer) {
-        return { status: "new", detail: `Latest: S${r.latestSeason}E${r.latestEpisode} · you're at S${loggedSeason}E${loggedEpisode}` };
-      }
-      return { status: "upToDate", detail: `Caught up through S${loggedSeason}E${loggedEpisode}` };
+
+    const cmp = compareSeasonEpisode(entry, r);
+    if (cmp.isNewer) {
+      return {
+        status: "new",
+        detail: `Latest: S${cmp.latestSeason}E${cmp.latestEpisode} · Yours: S${cmp.loggedSeason}E${cmp.loggedEpisode || 0} (${cmp.behind} to catch up)`,
+        behind: cmp.behind,
+      };
     }
-    return { status: "error", detail: "Unsupported category." };
+    return {
+      status: "upToDate",
+      detail: `Latest: S${cmp.latestSeason}E${cmp.latestEpisode} · Yours: S${cmp.loggedSeason}E${cmp.loggedEpisode || 0}`,
+      behind: 0,
+    };
   } catch (err) {
-    return { status: "error", detail: "Check failed — try again later." };
+    return { status: "error", detail: "Check failed — try again later.", behind: 0 };
   }
 }
 
@@ -427,7 +390,6 @@ function epBadge(status) {
     new: "🟢 New episode",
     upToDate: "⚪ Up to date",
     unlinked: "🔗 Not linked",
-    sequelFound: "🎬 Season complete",
     error: "⚠️ Check failed",
   }[status];
 }
@@ -485,19 +447,6 @@ function renderEpCheckResults() {
           <div class="ep-check-row">
             <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
             <span class="ep-check-detail">Checking…</span>
-          </div>`;
-      }
-
-      if (result.status === "sequelFound" && result.sequel) {
-        const linkBtn = isAuthed()
-          ? `<button class="ep-candidate" data-action="link-next" data-idx="${idx}">Link "${escapeHtml(result.sequel.title)}"</button>`
-          : `<span class="ep-check-detail">Sign in to link the next season</span>`;
-        return `
-          <div class="ep-check-row ep-check-row-open">
-            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-            <span class="ep-check-badge ep-sequelFound">${epBadge("sequelFound")}</span>
-            <span class="ep-check-detail">${escapeHtml(result.detail)}</span>
-            <div class="ep-candidate-list">${linkBtn}</div>
           </div>`;
       }
 
@@ -564,42 +513,6 @@ async function handleEpCheckClick(e) {
     } catch (err) {
       alert(`Could not link match: ${err.message}`);
     }
-    return;
-  }
-
-  if (btn.dataset.action === "link-next") {
-    const sequel = item.result?.sequel;
-    if (!sequel) return;
-    btn.disabled = true;
-    const nextSeason = (Number(item.entry.season) || 0) + 1;
-    try {
-      await apiUpdateEntry(
-        item.entry.id,
-        {
-          externalSource: "anilist",
-          externalId: sequel.id,
-          externalTitle: sequel.title,
-          season: nextSeason,
-          episode: 0,
-        },
-        getAuthPassword(),
-      );
-      item.entry = {
-        ...item.entry,
-        externalSource: "anilist",
-        externalId: sequel.id,
-        externalTitle: sequel.title,
-        season: nextSeason,
-        episode: 0,
-      };
-      entriesCache = null;
-      renderEpCheckResults();
-      item.result = await checkLinkedEntry(item.entry);
-      await persistEpStatus(item.entry, item.result.status);
-      renderEpCheckResults();
-    } catch (err) {
-      alert(`Could not link next season: ${err.message}`);
-    }
   }
 }
 
@@ -609,7 +522,6 @@ async function handleEpCheckClick(e) {
 // previously known "new episode" flag.
 function cacheStatusFor(resultStatus) {
   if (resultStatus === "new") return "new";
-  if (resultStatus === "sequelFound") return "seasonComplete";
   if (resultStatus === "upToDate") return "upToDate";
   return null;
 }
@@ -626,7 +538,27 @@ async function persistEpStatus(entry, resultStatus) {
   }
 }
 
-async function runEpisodeCheck() {
+// Sort order after a check completes: shows with episodes to catch up on
+// first (most behind at the top), then up-to-date shows, then unlinked
+// entries at the very bottom (nothing to sort them by yet).
+function epRank(item) {
+  if (!isLinked(item.entry)) return 3;
+  if (!item.result) return 2;
+  if (item.result.status === "new") return 0;
+  if (item.result.status === "error") return 2;
+  return 1; // upToDate
+}
+function sortEpCheckState() {
+  epCheckState.sort((a, b) => {
+    const rankA = epRank(a);
+    const rankB = epRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    if (rankA === 0) return (b.result.behind || 0) - (a.result.behind || 0);
+    return 0;
+  });
+}
+
+async function runEpisodeCheck(statusFilter = "Watching") {
   const btn = document.getElementById("episodeCheckBtn");
   const resultsEl = document.getElementById("episodeCheckResults");
   if (!btn || !resultsEl) return;
@@ -640,10 +572,10 @@ async function runEpisodeCheck() {
   }
 
   const targets = entries.filter(
-    (e) => (e.category === "tvshows" || e.category === "anime") && (e.status === "Watching" || e.status === "On Hold"),
+    (e) => (e.category === "tvshows" || e.category === "anime") && e.status === statusFilter,
   );
   if (!targets.length) {
-    resultsEl.innerHTML = `<div class="empty">No Watching or On Hold shows/anime to check.</div>`;
+    resultsEl.innerHTML = `<div class="empty">No shows/anime marked "${escapeHtml(statusFilter)}" to check.</div>`;
     return;
   }
 
@@ -660,9 +592,10 @@ async function runEpisodeCheck() {
       btn.textContent = `Checking ${i + 1} of ${epCheckState.length}…`;
       item.result = await checkLinkedEntry(item.entry);
       await persistEpStatus(item.entry, item.result.status);
-      renderEpCheckResults();
     }
   }
+  sortEpCheckState();
+  renderEpCheckResults();
   btn.disabled = false;
   btn.textContent = originalText;
 }
@@ -757,6 +690,8 @@ async function renderHome() {
 }
 
 function renderUpdates() {
+  if (!requireAuthOr("/login")) return;
+
   app.innerHTML = `
     ${headerHtml()}
     <section class="section">
@@ -764,14 +699,34 @@ function renderUpdates() {
         <div class="section-head">
           <h2 class="display">New episode check</h2>
         </div>
-        <p class="ep-check-desc">Checks your Watching / On Hold TV shows and anime against AniList and TVmaze for episodes you haven't logged yet.</p>
+        <p class="ep-check-desc">Checks your TV shows and anime against TMDB and TVmaze for episodes you haven't logged yet. Sorted with the most to catch up on first.</p>
+        <div class="filters" id="epStatusFilters"></div>
         <button class="btn" id="episodeCheckBtn">Check for updates</button>
         <div id="episodeCheckResults"></div>
       </div>
     </section>
   `;
   wireHeader();
-  document.getElementById("episodeCheckBtn").addEventListener("click", runEpisodeCheck);
+
+  const EP_STATUS_TABS = ["Watching", "On Hold", "Completed"];
+  let epActiveTab = "Watching";
+  const filtersEl = document.getElementById("epStatusFilters");
+
+  function renderTabs() {
+    filtersEl.innerHTML = EP_STATUS_TABS.map(
+      (s) => `<button class="filter-btn ${s === epActiveTab ? "active" : ""}" data-tab="${escapeHtml(s)}">${escapeHtml(s)}</button>`,
+    ).join("");
+    filtersEl.querySelectorAll(".filter-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        epActiveTab = btn.dataset.tab;
+        renderTabs();
+        runEpisodeCheck(epActiveTab);
+      });
+    });
+  }
+
+  renderTabs();
+  document.getElementById("episodeCheckBtn").addEventListener("click", () => runEpisodeCheck(epActiveTab));
 }
 
 async function renderCategory(categoryKey) {
