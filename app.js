@@ -60,7 +60,7 @@ function emptyEntry(category) {
   return {
     id: "", category, title: "", imageUrl: "", status: cat.statusOptions[0],
     season: "", episode: "", chapter: "", platform: "", rating: "", review: "",
-    externalSource: "", externalId: "", externalTitle: "",
+    externalSource: "", externalId: "", externalTitle: "", epStatus: "",
   };
 }
 
@@ -143,6 +143,7 @@ function parseHash() {
   if (parts[0] === "login") return { name: "login" };
   if (parts[0] === "add") return { name: "add" };
   if (parts[0] === "edit" && parts[1]) return { name: "edit", id: parts[1] };
+  if (parts[0] === "updates") return { name: "updates" };
   return { name: "notfound" };
 }
 
@@ -156,6 +157,7 @@ async function router() {
     if (route.name === "login") return renderLogin();
     if (route.name === "add") return renderAdd();
     if (route.name === "edit") return renderEdit(route.id);
+    if (route.name === "updates") return renderUpdates();
     return renderNotFound();
   } catch (err) {
     app.innerHTML = `<div class="wrap"><div class="empty error">${escapeHtml(err.message)}</div></div>`;
@@ -173,11 +175,14 @@ function headerHtml() {
     return `<a href="#/c/${c.key}" class="${active ? "active" : ""}">${c.label}</a>`;
   }).join("");
 
+  const active = route.name === "updates" ? "active" : "";
   const actions = isAuthed()
     ? `<a href="#/add" class="btn btn-primary">+ Add entry</a>
+       <a href="#/updates" class="link-muted ${active}">Updates</a>
        <button class="link-muted" id="exportCsvBtn">Export CSV</button>
        <button class="link-muted" id="signOutBtn">Sign out</button>`
-    : `<a href="#/login" class="btn">Sign in</a>`;
+    : `<a href="#/updates" class="link-muted ${active}">Updates</a>
+       <a href="#/login" class="btn">Sign in</a>`;
 
   return `
     <header class="site-header">
@@ -267,6 +272,12 @@ async function fetchAniListById(id) {
       status
       episodes
       nextAiringEpisode { episode }
+      relations {
+        edges {
+          relationType
+          node { id type title { romaji english } }
+        }
+      }
     }
   }`;
   const res = await fetch("https://graphql.anilist.co", {
@@ -281,7 +292,21 @@ async function fetchAniListById(id) {
   let latestEpisode = 0;
   if (media.nextAiringEpisode) latestEpisode = media.nextAiringEpisode.episode - 1;
   else if (media.status === "FINISHED" && media.episodes) latestEpisode = media.episodes;
-  return { title: media.title.english || media.title.romaji, latestEpisode };
+
+  const sequelEdge = (media.relations?.edges || []).find(
+    (e) => e.relationType === "SEQUEL" && e.node.type === "ANIME",
+  );
+  const sequel = sequelEdge
+    ? { id: sequelEdge.node.id, title: sequelEdge.node.title.english || sequelEdge.node.title.romaji }
+    : null;
+
+  return {
+    title: media.title.english || media.title.romaji,
+    status: media.status,
+    totalEpisodes: media.episodes,
+    latestEpisode,
+    sequel,
+  };
 }
 
 async function fetchTVMazeById(id) {
@@ -360,6 +385,20 @@ async function checkLinkedEntry(entry) {
       if (r.latestEpisode > logged) {
         return { status: "new", detail: `Latest: Ep ${r.latestEpisode} · you're at Ep ${logged || "—"}` };
       }
+      // Fully caught up on this season. If it's finished and AniList lists a
+      // sequel, surface it so the person can link forward with one click
+      // instead of searching again.
+      const seasonDone = r.status === "FINISHED" && r.totalEpisodes && logged >= r.totalEpisodes;
+      if (seasonDone && r.sequel) {
+        return {
+          status: "sequelFound",
+          detail: `You've finished "${r.title}" (${r.totalEpisodes} eps). Next season found:`,
+          sequel: r.sequel,
+        };
+      }
+      if (seasonDone) {
+        return { status: "upToDate", detail: `Finished "${r.title}" (${r.totalEpisodes} eps) — no next season found yet.` };
+      }
       return { status: "upToDate", detail: `Caught up through Ep ${logged || 0}` };
     }
     if (entry.category === "tvshows") {
@@ -388,6 +427,7 @@ function epBadge(status) {
     new: "🟢 New episode",
     upToDate: "⚪ Up to date",
     unlinked: "🔗 Not linked",
+    sequelFound: "🎬 Season complete",
     error: "⚠️ Check failed",
   }[status];
 }
@@ -445,6 +485,19 @@ function renderEpCheckResults() {
           <div class="ep-check-row">
             <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
             <span class="ep-check-detail">Checking…</span>
+          </div>`;
+      }
+
+      if (result.status === "sequelFound" && result.sequel) {
+        const linkBtn = isAuthed()
+          ? `<button class="ep-candidate" data-action="link-next" data-idx="${idx}">Link "${escapeHtml(result.sequel.title)}"</button>`
+          : `<span class="ep-check-detail">Sign in to link the next season</span>`;
+        return `
+          <div class="ep-check-row ep-check-row-open">
+            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
+            <span class="ep-check-badge ep-sequelFound">${epBadge("sequelFound")}</span>
+            <span class="ep-check-detail">${escapeHtml(result.detail)}</span>
+            <div class="ep-candidate-list">${linkBtn}</div>
           </div>`;
       }
 
@@ -506,10 +559,70 @@ async function handleEpCheckClick(e) {
       entriesCache = null; // sheet changed, refresh next full fetch
       renderEpCheckResults();
       item.result = await checkLinkedEntry(item.entry);
+      await persistEpStatus(item.entry, item.result.status);
       renderEpCheckResults();
     } catch (err) {
       alert(`Could not link match: ${err.message}`);
     }
+    return;
+  }
+
+  if (btn.dataset.action === "link-next") {
+    const sequel = item.result?.sequel;
+    if (!sequel) return;
+    btn.disabled = true;
+    const nextSeason = (Number(item.entry.season) || 0) + 1;
+    try {
+      await apiUpdateEntry(
+        item.entry.id,
+        {
+          externalSource: "anilist",
+          externalId: sequel.id,
+          externalTitle: sequel.title,
+          season: nextSeason,
+          episode: 0,
+        },
+        getAuthPassword(),
+      );
+      item.entry = {
+        ...item.entry,
+        externalSource: "anilist",
+        externalId: sequel.id,
+        externalTitle: sequel.title,
+        season: nextSeason,
+        episode: 0,
+      };
+      entriesCache = null;
+      renderEpCheckResults();
+      item.result = await checkLinkedEntry(item.entry);
+      await persistEpStatus(item.entry, item.result.status);
+      renderEpCheckResults();
+    } catch (err) {
+      alert(`Could not link next season: ${err.message}`);
+    }
+  }
+}
+
+// Maps a live check result to the value cached on the entry (epStatus),
+// which the card badge reads later without hitting any API. "error" is
+// intentionally not cached — a transient network blip shouldn't wipe out a
+// previously known "new episode" flag.
+function cacheStatusFor(resultStatus) {
+  if (resultStatus === "new") return "new";
+  if (resultStatus === "sequelFound") return "seasonComplete";
+  if (resultStatus === "upToDate") return "upToDate";
+  return null;
+}
+
+async function persistEpStatus(entry, resultStatus) {
+  if (!isAuthed()) return; // writing needs the owner password
+  const cacheValue = cacheStatusFor(resultStatus);
+  if (cacheValue === null) return;
+  try {
+    await apiUpdateEntry(entry.id, { epStatus: cacheValue }, getAuthPassword());
+    entriesCache = null; // so the next full fetch picks up the fresh epStatus
+  } catch (err) {
+    console.error("Could not cache episode-check status:", err);
   }
 }
 
@@ -546,6 +659,7 @@ async function runEpisodeCheck() {
     if (isLinked(item.entry)) {
       btn.textContent = `Checking ${i + 1} of ${epCheckState.length}…`;
       item.result = await checkLinkedEntry(item.entry);
+      await persistEpStatus(item.entry, item.result.status);
       renderEpCheckResults();
     }
   }
@@ -559,10 +673,17 @@ function entryCardHtml(entry) {
   const img = entry.imageUrl
     ? `<img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.title)}" loading="lazy" onerror="this.style.display='none'" />`
     : `<div class="no-image">No image</div>`;
+  const epBadge =
+    entry.epStatus === "new"
+      ? `<span class="ep-card-badge ep-card-new" title="New episode available">●</span>`
+      : entry.epStatus === "seasonComplete"
+        ? `<span class="ep-card-badge ep-card-season" title="Next season available to link">●</span>`
+        : "";
   return `
     <a href="#/e/${entry.id}">
       <div class="card-poster">
         ${img}
+        ${epBadge}
         <div class="status-tag ${statusColorClass(entry.status)}" title="${escapeHtml(entry.status)}"><span class="sr-only">${escapeHtml(entry.status)}</span></div>
       </div>
       <div class="card-title display">${escapeHtml(entry.title)}</div>
@@ -591,16 +712,6 @@ async function renderHome() {
         <div id="progressTarget"><p class="loading-text">Loading…</p></div>
       </div>
     </section>
-    <section class="section">
-      <div class="wrap">
-        <div class="section-head">
-          <h2 class="display">New episode check</h2>
-        </div>
-        <p class="ep-check-desc">Checks your Watching / On Hold TV shows and anime against AniList and TVmaze for episodes you haven't logged yet.</p>
-        <button class="btn" id="episodeCheckBtn">Check for updates</button>
-        <div id="episodeCheckResults"></div>
-      </div>
-    </section>
     <section class="section section-mini">
       <div class="wrap">
         <div class="section-head">
@@ -613,7 +724,6 @@ async function renderHome() {
     <footer class="footer"><div class="wrap">Venkey&rsquo;s Vault · A personal journal</div></footer>
   `;
   wireHeader();
-  document.getElementById("episodeCheckBtn").addEventListener("click", runEpisodeCheck);
 
   const progressTarget = document.getElementById("progressTarget");
   const galleryTarget = document.getElementById("galleryTarget");
@@ -644,6 +754,24 @@ async function renderHome() {
     progressTarget.innerHTML = msg;
     galleryTarget.innerHTML = msg;
   }
+}
+
+function renderUpdates() {
+  app.innerHTML = `
+    ${headerHtml()}
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 class="display">New episode check</h2>
+        </div>
+        <p class="ep-check-desc">Checks your Watching / On Hold TV shows and anime against AniList and TVmaze for episodes you haven't logged yet.</p>
+        <button class="btn" id="episodeCheckBtn">Check for updates</button>
+        <div id="episodeCheckResults"></div>
+      </div>
+    </section>
+  `;
+  wireHeader();
+  document.getElementById("episodeCheckBtn").addEventListener("click", runEpisodeCheck);
 }
 
 async function renderCategory(categoryKey) {
@@ -992,6 +1120,12 @@ async function renderEdit(id) {
     submitBtn.textContent = "Saving…";
     try {
       const payload = readFormEntry(entry);
+      // If progress actually moved forward, the cached "new episode"/"season
+      // complete" badge is stale — clear it. Editing unrelated fields
+      // (rating, review, etc.) leaves the cached status untouched.
+      const progressChanged =
+        String(payload.season) !== String(entry.season) || String(payload.episode) !== String(entry.episode);
+      if (progressChanged) payload.epStatus = "";
       await apiUpdateEntry(id, payload, getAuthPassword());
       entriesCache = null;
       navigate(`/e/${id}`);
