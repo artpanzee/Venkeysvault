@@ -41,9 +41,7 @@ h1, h2, h3, .display {
 .wrap-detail { max-width: 860px; margin: 0 auto; padding: 0 24px; }
 
 /* Header */
-.site-header {
-  border-bottom: 1px solid var(--border);
-}
+.site-header { border-bottom: 1px solid var(--border); }
 .header-top {
   display: flex;
   flex-wrap: wrap;
@@ -120,6 +118,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .section { padding: 40px 0; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .section-head h2 { font-size: 24px; margin: 0; }
+.section-head h1 { font-size: 34px; margin: 0; }
 .count { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted-foreground); }
 
 .grid {
@@ -145,7 +144,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .grid-mini .card-title { font-size: 11px; margin: 6px 0 1px; }
 .grid-mini .card-progress { font-size: 10px; }
 .grid-mini .stars { font-size: 10px; }
-.grid-mini .status-tag { height: 4px; }
 
 .card-poster {
   position: relative;
@@ -171,20 +169,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .status-tag.status-hold { background: var(--status-hold); }
 .status-tag.status-plan { background: var(--status-plan); }
 .status-tag.status-completed { background: var(--destructive); }
-.ep-card-badge {
-  position: absolute; top: 8px; right: 8px;
-  width: 10px; height: 10px; border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(0,0,0,0.5);
-  font-size: 0; /* hide the "●" glyph itself; the element is the dot */
-  line-height: 0;
-}
-.ep-card-badge.ep-card-new { background: var(--status-progress); }
-.ep-card-badge.ep-card-season { background: var(--gold); }
-.grid-mini .ep-card-badge { width: 7px; height: 7px; top: 4px; right: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+.grid-mini .status-tag { height: 4px; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
 .card-title {
   margin: 8px 0 2px;
   font-size: 14px;
@@ -207,38 +197,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
   font-size: 14px;
 }
 .empty.error { border-color: var(--destructive); color: var(--destructive); }
-
-/* New episode check */
-.ep-check-desc { font-size: 13px; color: var(--muted-foreground); max-width: 520px; margin: 0 0 16px; }
-.ep-check-list { margin-top: 20px; display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius); overflow: hidden; }
-.ep-check-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
-  background: var(--card); padding: 12px 16px;
-}
-.ep-check-title { font-weight: 600; font-size: 14px; flex-shrink: 0; }
-.ep-check-title:hover { color: var(--primary); }
-.ep-check-badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; flex-shrink: 0; }
-.ep-check-badge.ep-new { color: var(--status-progress); }
-.ep-check-badge.ep-upToDate { color: var(--muted-foreground); }
-.ep-check-badge.ep-unlinked { color: var(--status-plan); }
-.ep-check-badge.ep-sequelFound { color: var(--gold); }
-.ep-check-badge.ep-error { color: var(--status-hold); }
-.ep-check-detail { font-size: 12px; color: var(--muted-foreground); }
-
-.ep-find-btn, .ep-cancel {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
-  background: none; border: 1px solid var(--border); border-radius: 999px;
-  padding: 5px 12px; color: var(--foreground); cursor: pointer;
-}
-.ep-find-btn:hover, .ep-cancel:hover { border-color: var(--primary); }
-.ep-check-row-open { flex-direction: column; align-items: flex-start; }
-.ep-candidate-list { display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 8px; }
-.ep-candidate {
-  text-align: left; background: var(--input); border: 1px solid var(--border); border-radius: 6px;
-  padding: 8px 12px; font-size: 13px; color: var(--foreground); cursor: pointer;
-}
-.ep-candidate:hover { border-color: var(--primary); }
-.ep-candidate-year { color: var(--muted-foreground); font-size: 12px; }
 
 /* Filters */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
