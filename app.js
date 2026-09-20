@@ -18,8 +18,7 @@ const CATEGORIES = [
 const PLATFORM_OPTIONS = ["PC", "Mobile"];
 
 // Statuses that count as "actively going through it right now" — used to
-// build the homepage's "Currently in progress" section. "On Hold" is
-// deliberately excluded: it means paused, not in progress.
+// build the homepage's "Currently in progress" section.
 const IN_PROGRESS_STATUSES = ["Watching", "Reading", "Playing"];
 function isInProgress(entry) { return IN_PROGRESS_STATUSES.includes(entry.status); }
 
@@ -44,6 +43,7 @@ function statusPriority(status) {
 function getCategory(key) { return CATEGORIES.find((c) => c.key === key); }
 function categoryLabel(key) { return getCategory(key)?.label ?? key; }
 
+// Short progress string shown on cards, e.g. "S2 · E14", "Ch. 87", "PC"
 function progressLabel(entry) {
   const parts = [];
   if (entry.category === "tvshows" || entry.category === "anime") {
@@ -60,7 +60,6 @@ function emptyEntry(category) {
   return {
     id: "", category, title: "", imageUrl: "", status: cat.statusOptions[0],
     season: "", episode: "", chapter: "", platform: "", rating: "", review: "",
-    externalSource: "", externalId: "", externalTitle: "", epStatus: "",
   };
 }
 
@@ -143,7 +142,6 @@ function parseHash() {
   if (parts[0] === "login") return { name: "login" };
   if (parts[0] === "add") return { name: "add" };
   if (parts[0] === "edit" && parts[1]) return { name: "edit", id: parts[1] };
-  if (parts[0] === "updates") return { name: "updates" };
   return { name: "notfound" };
 }
 
@@ -157,7 +155,6 @@ async function router() {
     if (route.name === "login") return renderLogin();
     if (route.name === "add") return renderAdd();
     if (route.name === "edit") return renderEdit(route.id);
-    if (route.name === "updates") return renderUpdates();
     return renderNotFound();
   } catch (err) {
     app.innerHTML = `<div class="wrap"><div class="empty error">${escapeHtml(err.message)}</div></div>`;
@@ -175,10 +172,8 @@ function headerHtml() {
     return `<a href="#/c/${c.key}" class="${active ? "active" : ""}">${c.label}</a>`;
   }).join("");
 
-  const active = route.name === "updates" ? "active" : "";
   const actions = isAuthed()
     ? `<a href="#/add" class="btn btn-primary">+ Add entry</a>
-       <a href="#/updates" class="link-muted ${active}">Updates</a>
        <button class="link-muted" id="exportCsvBtn">Export CSV</button>
        <button class="link-muted" id="signOutBtn">Sign out</button>`
     : `<a href="#/login" class="btn">Sign in</a>`;
@@ -196,14 +191,14 @@ function headerHtml() {
 }
 
 function wireHeader() {
-  const btn = document.getElementById("signOutBtn");
-  if (btn) btn.addEventListener("click", () => { clearAuth(); navigate("/"); });
+  const signOutBtn = document.getElementById("signOutBtn");
+  if (signOutBtn) signOutBtn.addEventListener("click", () => { clearAuth(); navigate("/"); });
 
   const exportBtn = document.getElementById("exportCsvBtn");
-  if (exportBtn) exportBtn.addEventListener("click", downloadEntriesCsv);
+  if (exportBtn) exportBtn.addEventListener("click", downloadCsv);
 }
 
-// ---------- CSV export (signed-in only) ----------
+// ---------- CSV export ----------
 const CSV_COLUMNS = [
   "category", "title", "status", "season", "episode", "chapter", "platform",
   "rating", "review", "imageUrl", "createdAt", "updatedAt",
@@ -211,7 +206,6 @@ const CSV_COLUMNS = [
 
 function csvEscape(value) {
   const str = String(value ?? "");
-  // Quote any field containing a comma, quote, or newline; double up inner quotes.
   if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
   return str;
 }
@@ -222,14 +216,13 @@ function entriesToCsv(entries) {
   return [header, ...rows].join("\n");
 }
 
-async function downloadEntriesCsv() {
+async function downloadCsv() {
   const exportBtn = document.getElementById("exportCsvBtn");
-  const original = exportBtn?.textContent;
-  if (exportBtn) { exportBtn.disabled = true; exportBtn.textContent = "Exporting…"; }
+  if (exportBtn) exportBtn.disabled = true;
   try {
     const entries = await getEntries();
     const csv = entriesToCsv(entries);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const date = new Date().toISOString().slice(0, 10);
@@ -242,362 +235,8 @@ async function downloadEntriesCsv() {
   } catch (err) {
     alert(`Could not export CSV: ${err.message}`);
   } finally {
-    if (exportBtn) { exportBtn.disabled = false; exportBtn.textContent = original; }
+    if (exportBtn) exportBtn.disabled = false;
   }
-}
-
-// ---------- New episode check (AniList for anime, TVmaze for TV shows) ----------
-// Both public APIs, callable directly from the browser (CORS-friendly, no
-// API key). On-demand only (button click), not automatic.
-//
-// Accuracy strategy: fuzzy title search is unreliable for uncommon or
-// ambiguous titles, so instead of auto-trusting a "best guess," entries are
-// checked by exact database ID once linked (entry.externalSource /
-// externalId / externalTitle, persisted to the Sheet). Unlinked entries show
-// a "Find match" picker (top candidates) instead of a possibly-wrong result.
-//
-// Anime uses TMDB rather than AniList: TMDB groups a show's seasons under
-// one ID (like TVmaze does for Western TV), which sidesteps AniList's
-// per-season-is-a-different-entry structure — no season-to-season relinking
-// needed once a show is linked.
-
-const TMDB_API_KEY = "885cb36574611c34f3b88684f4df0111";
-const EXPECTED_SOURCE = { anime: "tmdb", tvshows: "tvmaze" };
-
-function isLinked(entry) {
-  return !!entry.externalId && entry.externalSource === EXPECTED_SOURCE[entry.category];
-}
-
-// ----- Direct-by-ID lookups (used once an entry is linked) -----
-
-async function fetchTMDBById(id) {
-  const res = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${TMDB_API_KEY}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("TMDB request failed");
-  const show = await res.json();
-  const last = show.last_episode_to_air;
-  return {
-    title: show.name,
-    latestSeason: last ? last.season_number : 0,
-    latestEpisode: last ? last.episode_number : 0,
-  };
-}
-
-async function fetchTVMazeById(id) {
-  const res = await fetch(`https://api.tvmaze.com/shows/${id}?embed=episodes`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("TVmaze request failed");
-  const show = await res.json();
-  const episodes = show?._embedded?.episodes || [];
-  const today = new Date();
-  const aired = episodes.filter((ep) => ep.airdate && new Date(ep.airdate) <= today);
-  if (!aired.length) return { title: show.name, latestSeason: 0, latestEpisode: 0 };
-  const latest = aired.reduce((a, b) => {
-    if (a.season !== b.season) return a.season > b.season ? a : b;
-    return a.number > b.number ? a : b;
-  });
-  return { title: show.name, latestSeason: latest.season, latestEpisode: latest.number };
-}
-
-// ----- Candidate search (used to link an entry) -----
-
-async function searchTMDBCandidates(title) {
-  const res = await fetch(`https://api.themoviedb.org/3/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`);
-  if (!res.ok) throw new Error("TMDB search failed");
-  const json = await res.json();
-  return (json.results || []).slice(0, 5).map((r) => ({
-    id: r.id,
-    source: "tmdb",
-    title: r.name,
-    year: r.first_air_date ? r.first_air_date.slice(0, 4) : "—",
-    meta: r.origin_country?.[0] || "",
-  }));
-}
-
-async function searchTVMazeCandidates(title) {
-  const res = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`);
-  if (!res.ok) throw new Error("TVmaze search failed");
-  const json = await res.json();
-  return json.slice(0, 5).map((r) => ({
-    id: r.show.id,
-    source: "tvmaze",
-    title: r.show.name,
-    year: r.show.premiered ? r.show.premiered.slice(0, 4) : "—",
-    meta: r.show.type || "",
-  }));
-}
-
-async function searchCandidates(entry) {
-  if (entry.category === "anime") return searchTMDBCandidates(entry.title);
-  if (entry.category === "tvshows") return searchTVMazeCandidates(entry.title);
-  return [];
-}
-
-// ----- Comparison result for a linked entry -----
-// Same season+episode comparison for both anime (TMDB) and TV shows
-// (TVmaze), since both now group all seasons under one show ID.
-
-function compareSeasonEpisode(entry, r) {
-  const loggedSeason = Number(entry.season) || 0;
-  const loggedEpisode = Number(entry.episode) || 0;
-  const latestSeason = r.latestSeason || 0;
-  const latestEpisode = r.latestEpisode || 0;
-  const isNewer = latestSeason > loggedSeason || (latestSeason === loggedSeason && latestEpisode > loggedEpisode);
-  // "Episodes behind" is exact within the same season; across a season
-  // jump we can't know the previous season's total episode count from this
-  // data alone, so it's reported as at least the new season's episode count
-  // rather than guessing an exact cross-season total.
-  const behind = !isNewer ? 0 : latestSeason === loggedSeason ? latestEpisode - loggedEpisode : Math.max(1, latestEpisode);
-  return { isNewer, loggedSeason, loggedEpisode, latestSeason, latestEpisode, behind };
-}
-
-async function checkLinkedEntry(entry) {
-  try {
-    const source = EXPECTED_SOURCE[entry.category];
-    let r = null;
-    if (source === "tmdb") r = await fetchTMDBById(entry.externalId);
-    else if (source === "tvmaze") r = await fetchTVMazeById(entry.externalId);
-    else return { status: "error", detail: "Unsupported category.", behind: 0 };
-
-    if (!r) {
-      return { status: "error", detail: `Linked title not found on ${source === "tmdb" ? "TMDB" : "TVmaze"} anymore.`, behind: 0 };
-    }
-
-    const cmp = compareSeasonEpisode(entry, r);
-    if (cmp.isNewer) {
-      return {
-        status: "new",
-        detail: `Latest: S${cmp.latestSeason}E${cmp.latestEpisode} · Yours: S${cmp.loggedSeason}E${cmp.loggedEpisode || 0} (${cmp.behind} to catch up)`,
-        behind: cmp.behind,
-      };
-    }
-    return {
-      status: "upToDate",
-      detail: `Latest: S${cmp.latestSeason}E${cmp.latestEpisode} · Yours: S${cmp.loggedSeason}E${cmp.loggedEpisode || 0}`,
-      behind: 0,
-    };
-  } catch (err) {
-    return { status: "error", detail: "Check failed — try again later.", behind: 0 };
-  }
-}
-
-// ----- Rendering + state for the check panel -----
-// epCheckState: array of { entry, result, candidates, loadingCandidates }
-let epCheckState = [];
-
-function epBadge(status) {
-  return {
-    new: "🟢 New episode",
-    upToDate: "⚪ Up to date",
-    unlinked: "🔗 Not linked",
-    error: "⚠️ Check failed",
-  }[status];
-}
-
-function renderEpCheckResults() {
-  const resultsEl = document.getElementById("episodeCheckResults");
-  if (!resultsEl) return;
-
-  resultsEl.innerHTML = `<div class="ep-check-list">${epCheckState
-    .map((item, idx) => {
-      const { entry, result, candidates, loadingCandidates } = item;
-
-      if (candidates) {
-        const list = candidates.length
-          ? candidates
-              .map(
-                (c) => `
-              <button class="ep-candidate" data-action="link" data-idx="${idx}" data-cid="${c.id}" data-source="${c.source}">
-                ${escapeHtml(c.title)} <span class="ep-candidate-year">(${escapeHtml(String(c.year))}${c.meta ? " · " + escapeHtml(c.meta) : ""})</span>
-              </button>`,
-              )
-              .join("")
-          : `<p class="ep-check-detail">No results found. Try adjusting the entry's title.</p>`;
-        return `
-          <div class="ep-check-row ep-check-row-open">
-            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-            <span class="ep-check-badge ep-unlinked">${epBadge("unlinked")}</span>
-            <button class="ep-cancel" data-action="cancel-find" data-idx="${idx}">Cancel</button>
-            <div class="ep-candidate-list">${list}</div>
-          </div>`;
-      }
-
-      if (loadingCandidates) {
-        return `
-          <div class="ep-check-row">
-            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-            <span class="ep-check-detail">Searching…</span>
-          </div>`;
-      }
-
-      if (!isLinked(entry)) {
-        const findBtn = isAuthed()
-          ? `<button class="ep-find-btn" data-action="find" data-idx="${idx}">Find match</button>`
-          : `<span class="ep-check-detail">Sign in to link this match</span>`;
-        return `
-          <div class="ep-check-row">
-            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-            <span class="ep-check-badge ep-unlinked">${epBadge("unlinked")}</span>
-            ${findBtn}
-          </div>`;
-      }
-
-      if (!result) {
-        return `
-          <div class="ep-check-row">
-            <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-            <span class="ep-check-detail">Checking…</span>
-          </div>`;
-      }
-
-      const relink = isAuthed()
-        ? `<button class="ep-cancel" data-action="find" data-idx="${idx}">Change match</button>`
-        : "";
-      return `
-        <div class="ep-check-row">
-          <a href="#/e/${entry.id}" class="ep-check-title">${escapeHtml(entry.title)}</a>
-          <span class="ep-check-badge ep-${result.status}">${epBadge(result.status)}</span>
-          <span class="ep-check-detail">${escapeHtml(result.detail)} · linked: ${escapeHtml(entry.externalTitle || "")}</span>
-          ${relink}
-        </div>`;
-    })
-    .join("")}</div>`;
-}
-
-async function handleEpCheckClick(e) {
-  const btn = e.target.closest("[data-action]");
-  if (!btn) return;
-  const idx = Number(btn.dataset.idx);
-  const item = epCheckState[idx];
-  if (!item) return;
-
-  if (btn.dataset.action === "find") {
-    item.candidates = null;
-    item.loadingCandidates = true;
-    renderEpCheckResults();
-    try {
-      item.candidates = await searchCandidates(item.entry);
-    } catch (err) {
-      item.candidates = [];
-    }
-    item.loadingCandidates = false;
-    renderEpCheckResults();
-    return;
-  }
-
-  if (btn.dataset.action === "cancel-find") {
-    item.candidates = null;
-    renderEpCheckResults();
-    return;
-  }
-
-  if (btn.dataset.action === "link") {
-    const cid = btn.dataset.cid;
-    const source = btn.dataset.source;
-    const candidate = item.candidates.find((c) => String(c.id) === cid && c.source === source);
-    if (!candidate) return;
-    btn.disabled = true;
-    try {
-      await apiUpdateEntry(
-        item.entry.id,
-        { externalSource: source, externalId: candidate.id, externalTitle: candidate.title },
-        getAuthPassword(),
-      );
-      item.entry = { ...item.entry, externalSource: source, externalId: candidate.id, externalTitle: candidate.title };
-      item.candidates = null;
-      entriesCache = null; // sheet changed, refresh next full fetch
-      renderEpCheckResults();
-      item.result = await checkLinkedEntry(item.entry);
-      await persistEpStatus(item.entry, item.result.status);
-      renderEpCheckResults();
-    } catch (err) {
-      alert(`Could not link match: ${err.message}`);
-    }
-  }
-}
-
-// Maps a live check result to the value cached on the entry (epStatus),
-// which the card badge reads later without hitting any API. "error" is
-// intentionally not cached — a transient network blip shouldn't wipe out a
-// previously known "new episode" flag.
-function cacheStatusFor(resultStatus) {
-  if (resultStatus === "new") return "new";
-  if (resultStatus === "upToDate") return "upToDate";
-  return null;
-}
-
-async function persistEpStatus(entry, resultStatus) {
-  if (!isAuthed()) return; // writing needs the owner password
-  const cacheValue = cacheStatusFor(resultStatus);
-  if (cacheValue === null) return;
-  try {
-    await apiUpdateEntry(entry.id, { epStatus: cacheValue }, getAuthPassword());
-    entriesCache = null; // so the next full fetch picks up the fresh epStatus
-  } catch (err) {
-    console.error("Could not cache episode-check status:", err);
-  }
-}
-
-// Sort order after a check completes: shows with episodes to catch up on
-// first (most behind at the top), then up-to-date shows, then unlinked
-// entries at the very bottom (nothing to sort them by yet).
-function epRank(item) {
-  if (!isLinked(item.entry)) return 3;
-  if (!item.result) return 2;
-  if (item.result.status === "new") return 0;
-  if (item.result.status === "error") return 2;
-  return 1; // upToDate
-}
-function sortEpCheckState() {
-  epCheckState.sort((a, b) => {
-    const rankA = epRank(a);
-    const rankB = epRank(b);
-    if (rankA !== rankB) return rankA - rankB;
-    if (rankA === 0) return (b.result.behind || 0) - (a.result.behind || 0);
-    return 0;
-  });
-}
-
-async function runEpisodeCheck(statusFilter = "Watching") {
-  const btn = document.getElementById("episodeCheckBtn");
-  const resultsEl = document.getElementById("episodeCheckResults");
-  if (!btn || !resultsEl) return;
-
-  let entries;
-  try {
-    entries = await getEntries();
-  } catch (err) {
-    resultsEl.innerHTML = `<div class="empty error">${escapeHtml(err.message)}</div>`;
-    return;
-  }
-
-  const targets = entries.filter(
-    (e) => (e.category === "tvshows" || e.category === "anime") && e.status === statusFilter,
-  );
-  if (!targets.length) {
-    resultsEl.innerHTML = `<div class="empty">No shows/anime marked "${escapeHtml(statusFilter)}" to check.</div>`;
-    return;
-  }
-
-  epCheckState = targets.map((entry) => ({ entry, result: null, candidates: null, loadingCandidates: false }));
-  resultsEl.removeEventListener("click", handleEpCheckClick);
-  resultsEl.addEventListener("click", handleEpCheckClick);
-  renderEpCheckResults();
-
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  for (let i = 0; i < epCheckState.length; i++) {
-    const item = epCheckState[i];
-    if (isLinked(item.entry)) {
-      btn.textContent = `Checking ${i + 1} of ${epCheckState.length}…`;
-      item.result = await checkLinkedEntry(item.entry);
-      await persistEpStatus(item.entry, item.result.status);
-    }
-  }
-  sortEpCheckState();
-  renderEpCheckResults();
-  btn.disabled = false;
-  btn.textContent = originalText;
 }
 
 // ---------- Entry card ----------
@@ -606,17 +245,10 @@ function entryCardHtml(entry) {
   const img = entry.imageUrl
     ? `<img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.title)}" loading="lazy" onerror="this.style.display='none'" />`
     : `<div class="no-image">No image</div>`;
-  const epBadge =
-    entry.epStatus === "new"
-      ? `<span class="ep-card-badge ep-card-new" title="New episode available">●</span>`
-      : entry.epStatus === "seasonComplete"
-        ? `<span class="ep-card-badge ep-card-season" title="Next season available to link">●</span>`
-        : "";
   return `
     <a href="#/e/${entry.id}">
       <div class="card-poster">
         ${img}
-        ${epBadge}
         <div class="status-tag ${statusColorClass(entry.status)}" title="${escapeHtml(entry.status)}"><span class="sr-only">${escapeHtml(entry.status)}</span></div>
       </div>
       <div class="card-title display">${escapeHtml(entry.title)}</div>
@@ -687,46 +319,6 @@ async function renderHome() {
     progressTarget.innerHTML = msg;
     galleryTarget.innerHTML = msg;
   }
-}
-
-function renderUpdates() {
-  if (!requireAuthOr("/login")) return;
-
-  app.innerHTML = `
-    ${headerHtml()}
-    <section class="section">
-      <div class="wrap">
-        <div class="section-head">
-          <h2 class="display">New episode check</h2>
-        </div>
-        <p class="ep-check-desc">Checks your TV shows and anime against TMDB and TVmaze for episodes you haven't logged yet. Sorted with the most to catch up on first.</p>
-        <div class="filters" id="epStatusFilters"></div>
-        <button class="btn" id="episodeCheckBtn">Check for updates</button>
-        <div id="episodeCheckResults"></div>
-      </div>
-    </section>
-  `;
-  wireHeader();
-
-  const EP_STATUS_TABS = ["Watching", "On Hold", "Completed"];
-  let epActiveTab = "Watching";
-  const filtersEl = document.getElementById("epStatusFilters");
-
-  function renderTabs() {
-    filtersEl.innerHTML = EP_STATUS_TABS.map(
-      (s) => `<button class="filter-btn ${s === epActiveTab ? "active" : ""}" data-tab="${escapeHtml(s)}">${escapeHtml(s)}</button>`,
-    ).join("");
-    filtersEl.querySelectorAll(".filter-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        epActiveTab = btn.dataset.tab;
-        renderTabs();
-        runEpisodeCheck(epActiveTab);
-      });
-    });
-  }
-
-  renderTabs();
-  document.getElementById("episodeCheckBtn").addEventListener("click", () => runEpisodeCheck(epActiveTab));
 }
 
 async function renderCategory(categoryKey) {
@@ -1075,12 +667,6 @@ async function renderEdit(id) {
     submitBtn.textContent = "Saving…";
     try {
       const payload = readFormEntry(entry);
-      // If progress actually moved forward, the cached "new episode"/"season
-      // complete" badge is stale — clear it. Editing unrelated fields
-      // (rating, review, etc.) leaves the cached status untouched.
-      const progressChanged =
-        String(payload.season) !== String(entry.season) || String(payload.episode) !== String(entry.episode);
-      if (progressChanged) payload.epStatus = "";
       await apiUpdateEntry(id, payload, getAuthPassword());
       entriesCache = null;
       navigate(`/e/${id}`);
