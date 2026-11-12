@@ -128,6 +128,111 @@ async function getEntries(forceRefresh = false) {
   return entriesCache;
 }
 
+// ---------- Display preferences: theme + grid columns ----------
+// Both are per-device (localStorage) and never touch the Sheet.
+const THEME_KEY = "vault_theme";   // "light" | "dark" (absent = follow the system)
+const COLS_KEY = "vault_columns";  // JSON: { mobile: n, desktop: n }
+const THEME_COLORS = { dark: "#232629", light: "#f6f4ef" }; // browser-bar colour
+const COLS_MIN = 2;
+const COLS_MAX = { mobile: 6, desktop: 10 };
+const COLS_DEFAULT = { mobile: 2, desktop: 5 };
+const desktopQuery = window.matchMedia("(min-width: 700px)");
+const lightQuery = window.matchMedia("(prefers-color-scheme: light)");
+
+function storageGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function storageSet(key, value) { try { localStorage.setItem(key, value); } catch { /* private mode etc. */ } }
+
+// -- Theme --
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t === "light" || t === "dark") return t;
+  return lightQuery.matches ? "light" : "dark";
+}
+function themeToggleLabel() {
+  return currentTheme() === "dark" ? "Switch to light mode" : "Switch to dark mode";
+}
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", THEME_COLORS[theme]);
+  const btn = document.getElementById("themeToggle");
+  if (btn) { btn.setAttribute("aria-label", themeToggleLabel()); btn.title = themeToggleLabel(); }
+}
+function toggleTheme() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  storageSet(THEME_KEY, next);
+  applyTheme(next);
+}
+// If the visitor never chose a theme, follow the OS when it changes.
+lightQuery.addEventListener("change", (e) => {
+  if (!storageGet(THEME_KEY)) applyTheme(e.matches ? "light" : "dark");
+});
+
+// -- Columns --
+function deviceClass() { return desktopQuery.matches ? "desktop" : "mobile"; }
+function clampCols(n, device) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return COLS_DEFAULT[device];
+  return Math.min(COLS_MAX[device], Math.max(COLS_MIN, v));
+}
+function loadColsPrefs() {
+  try { return JSON.parse(storageGet(COLS_KEY) || "{}") || {}; } catch { return {}; }
+}
+function getCols() {
+  const device = deviceClass();
+  const saved = loadColsPrefs()[device];
+  return saved === undefined ? COLS_DEFAULT[device] : clampCols(saved, device);
+}
+function saveCols(n) {
+  const prefs = loadColsPrefs();
+  prefs[deviceClass()] = n;
+  storageSet(COLS_KEY, JSON.stringify(prefs));
+}
+// Pushes the column count into CSS variables. The "Recently logged" strip
+// runs at double density (capped), and gaps tighten as columns increase.
+function applyCols(n) {
+  const desktop = deviceClass() === "desktop";
+  const mini = Math.min(n * 2, desktop ? 12 : 8);
+  const gap = Math.max(8, Math.min(desktop ? 24 : 16, Math.round((desktop ? 120 : 60) / n)));
+  const style = document.documentElement.style;
+  style.setProperty("--cols", n);
+  style.setProperty("--cols-mini", mini);
+  style.setProperty("--gap", `${gap}px`);
+  style.setProperty("--gap-mini", `${Math.max(6, Math.round(gap / 2))}px`);
+}
+function columnsControlHtml() {
+  const device = deviceClass();
+  const n = getCols();
+  return `
+    <div class="cols-control">
+      <span>Columns</span>
+      <input type="range" class="cols-slider" min="${COLS_MIN}" max="${COLS_MAX[device]}" step="1" value="${n}" aria-label="Cards per row" />
+      <output class="cols-value">${n}</output>
+    </div>`;
+}
+function setColsOutputs(n) {
+  document.querySelectorAll(".cols-value").forEach((o) => { o.textContent = n; });
+}
+function wireColumnsControl() {
+  document.querySelectorAll(".cols-slider").forEach((slider) => {
+    slider.addEventListener("input", () => {
+      const n = clampCols(slider.value, deviceClass());
+      saveCols(n);
+      applyCols(n);
+      setColsOutputs(n);
+    });
+  });
+}
+// Rotating a phone / resizing across the breakpoint switches between the
+// mobile and desktop preference (and slider range).
+desktopQuery.addEventListener("change", () => {
+  const n = getCols();
+  document.querySelectorAll(".cols-slider").forEach((s) => { s.max = COLS_MAX[deviceClass()]; s.value = n; });
+  setColsOutputs(n);
+  applyCols(n);
+});
+applyCols(getCols());
+
 // ---------- Router ----------
 const app = document.getElementById("app");
 
@@ -165,27 +270,40 @@ window.addEventListener("hashchange", router);
 window.addEventListener("DOMContentLoaded", router);
 
 // ---------- Shared header ----------
+const ICON_SUN = '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+const ICON_MOON = '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+
+function themeToggleHtml() {
+  const label = escapeHtml(themeToggleLabel());
+  return `<button type="button" class="icon-btn" id="themeToggle" aria-label="${label}" title="${label}">${ICON_SUN}${ICON_MOON}</button>`;
+}
+
 function headerHtml() {
   const route = parseHash();
+  const authed = isAuthed();
   const navLinks = CATEGORIES.map((c) => {
     const active = route.name === "category" && route.category === c.key;
-    return `<a href="#/c/${c.key}" class="${active ? "active" : ""}">${c.label}</a>`;
+    return `<a href="#/c/${c.key}" class="${active ? "active" : ""}"${active ? ' aria-current="page"' : ""}>${c.label}</a>`;
   }).join("");
 
-  const actions = isAuthed()
-    ? `<a href="#/add" class="btn btn-primary">+ Add entry</a>
-       <button class="link-muted" id="exportCsvBtn">Export CSV</button>
-       <button class="link-muted" id="signOutBtn">Sign out</button>`
-    : `<a href="#/login" class="btn">Sign in</a>`;
+  const ownerActions = authed
+    ? `<div class="owner-actions">
+         <a href="#/add" class="btn btn-primary">+ Add entry</a>
+         <div class="owner-links">
+           <button type="button" class="link-muted" id="exportCsvBtn">Export CSV</button>
+           <button type="button" class="link-muted" id="signOutBtn">Sign out</button>
+         </div>
+       </div>`
+    : "";
+  const guestAction = authed ? "" : `<a href="#/login" class="btn">Sign in</a>`;
 
   return `
     <header class="site-header">
-      <div class="wrap header-top">
-        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" />Venkey&rsquo;s Vault</a>
-        <div class="header-actions">${actions}</div>
-      </div>
-      <div class="wrap header-nav-row">
-        <nav class="nav">${navLinks}</nav>
+      <div class="wrap header-grid ${authed ? "has-owner" : ""}">
+        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" /><span class="logo-text">Venkey&rsquo;s Vault</span></a>
+        <div class="header-tools">${themeToggleHtml()}${guestAction}</div>
+        ${ownerActions}
+        <div class="header-nav-row"><nav class="nav" aria-label="Categories">${navLinks}</nav></div>
       </div>
     </header>`;
 }
@@ -196,6 +314,17 @@ function wireHeader() {
 
   const exportBtn = document.getElementById("exportCsvBtn");
   if (exportBtn) exportBtn.addEventListener("click", downloadCsv);
+
+  const themeBtn = document.getElementById("themeToggle");
+  if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
+
+  // The header is rebuilt on every page, so the category strip would snap
+  // back to the start. Re-centre the active tab (e.g. "Games" on a phone).
+  const navRow = document.querySelector(".header-nav-row");
+  const activeLink = navRow && navRow.querySelector("a.active");
+  if (activeLink) {
+    navRow.scrollLeft = activeLink.offsetLeft - (navRow.clientWidth - activeLink.offsetWidth) / 2;
+  }
 }
 
 // ---------- CSV export ----------
@@ -246,7 +375,7 @@ function entryCardHtml(entry) {
     ? `<img src="${escapeHtml(entry.imageUrl)}" alt="${escapeHtml(entry.title)}" loading="lazy" onerror="this.style.display='none'" />`
     : `<div class="no-image">No image</div>`;
   return `
-    <a href="#/e/${entry.id}">
+    <a href="#/e/${entry.id}" class="card">
       <div class="card-poster">
         ${img}
         <div class="status-tag ${statusColorClass(entry.status)}" title="${escapeHtml(entry.status)}"><span class="sr-only">${escapeHtml(entry.status)}</span></div>
@@ -273,6 +402,7 @@ async function renderHome() {
         <div class="section-head">
           <h2 class="display">Currently in progress</h2>
           <span class="count" id="progressCount"></span>
+          ${columnsControlHtml()}
         </div>
         <div id="progressTarget"><p class="loading-text">Loading…</p></div>
       </div>
@@ -289,6 +419,7 @@ async function renderHome() {
     <footer class="footer"><div class="wrap">Venkey&rsquo;s Vault · A personal journal</div></footer>
   `;
   wireHeader();
+  wireColumnsControl();
 
   const progressTarget = document.getElementById("progressTarget");
   const galleryTarget = document.getElementById("galleryTarget");
@@ -333,13 +464,17 @@ async function renderCategory(categoryKey) {
     ${headerHtml()}
     <section class="section">
       <div class="wrap">
-        <h1 class="display">${cat.label}</h1>
+        <div class="section-head">
+          <h1 class="display">${cat.label}</h1>
+          ${columnsControlHtml()}
+        </div>
         <div class="filters" id="filters"></div>
         <div id="galleryTarget"><p class="loading-text">Loading…</p></div>
       </div>
     </section>
   `;
   wireHeader();
+  wireColumnsControl();
 
   const statuses = ["All", ...cat.statusOptions];
   let activeStatus = "All";
@@ -431,7 +566,7 @@ function renderLogin() {
   app.innerHTML = `
     <div class="login-wrap">
       <div class="login-box">
-        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" />Venkey&rsquo;s Vault</a>
+        <a href="#/" class="logo display"><img src="favicon.png" alt="" class="logo-icon" /><span class="logo-text">Venkey&rsquo;s Vault</span></a>
         <h1 class="display">Sign in</h1>
         <p class="sub">Enter the owner password to add or edit entries.</p>
         <form id="loginForm" style="margin-top:32px;">
