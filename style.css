@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --radius: 8px;
   --background: #232629;
   --foreground: #f2f1ee;
@@ -15,8 +16,45 @@
   --status-progress: #6fbf73;
   --status-hold: #e0a83f;
   --status-plan: #a988d9;
+  --poster-bg: linear-gradient(135deg, #34373a, #2a2c3a);
+  --shadow-card: 0 8px 24px -12px rgba(0,0,0,0.6);
+  --shadow-card-hover: 0 16px 32px -12px rgba(0,0,0,0.7);
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Playfair Display", "Times New Roman", serif;
+
+  /* Grid density. app.js overwrites these inline from the slider; the values
+     here are only the first-paint defaults. */
+  --cols: 2;
+  --cols-mini: 4;
+  --gap: 16px;
+  --gap-mini: 8px;
+}
+@media (min-width: 700px) {
+  :root { --cols: 5; --cols-mini: 10; --gap: 24px; --gap-mini: 10px; }
+}
+
+/* Light theme. Gold/teal/status colours are darkened so they keep enough
+   contrast on a light background. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f6f4ef;
+  --foreground: #1f2124;
+  --card: #ffffff;
+  --primary: #9a6a10;
+  --primary-foreground: #fffaf0;
+  --muted: #ebe8e0;
+  --muted-foreground: #5c5a54;
+  --accent: #23766f;
+  --destructive: #b4412e;
+  --border: #d8d3c7;
+  --input: #ffffff;
+  --gold: #a46f06;
+  --status-progress: #2e8638;
+  --status-hold: #b27508;
+  --status-plan: #7449b3;
+  --poster-bg: linear-gradient(135deg, #e6e2d8, #d9dcea);
+  --shadow-card: 0 8px 20px -12px rgba(40,30,10,0.35);
+  --shadow-card-hover: 0 14px 28px -12px rgba(40,30,10,0.45);
 }
 
 * { box-sizing: border-box; }
@@ -31,36 +69,99 @@ body {
 a { color: inherit; text-decoration: none; }
 button, select, input, textarea { font-family: inherit; }
 
+a:focus-visible, button:focus-visible, .filter-btn:focus-visible, .cols-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 h1, h2, h3, .display {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
 }
 
-.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-.wrap-narrow { max-width: 640px; margin: 0 auto; padding: 0 24px; }
-.wrap-detail { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+/* Side padding respects the notch in landscape / standalone PWA mode. */
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); }
+.wrap-narrow { max-width: 640px; margin: 0 auto; padding: 0 max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); }
+.wrap-detail { max-width: 860px; margin: 0 auto; padding: 0 max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); }
 
-/* Header */
-.site-header { border-bottom: 1px solid var(--border); }
-.header-top {
+/* ---------- Header ----------
+   One grid, three layouts:
+   mobile guest   [logo ........ tools]
+                  [nav (scrolls) .....]
+   mobile owner   [logo ........ tools]
+                  [+ Add ... Export Sign out]
+                  [nav (scrolls) .....]
+   desktop owner  [logo   + Add  Export  Sign out   tools]
+                  [nav ...............................]  */
+.site-header {
+  border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "logo tools"
+    "nav nav";
+  align-items: center;
+  gap: 10px 12px;
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+.header-grid.has-owner {
+  grid-template-areas:
+    "logo tools"
+    "owner owner"
+    "nav nav";
+}
+.header-grid .logo { grid-area: logo; min-width: 0; }
+.header-tools { grid-area: tools; display: flex; align-items: center; gap: 8px; }
+.owner-actions {
+  grid-area: owner;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 16px;
-  padding: 18px 0 12px;
+  gap: 12px;
 }
+.owner-links { display: flex; align-items: center; gap: 4px; }
 .header-nav-row {
-  padding-bottom: 14px;
+  grid-area: nav;
+  min-width: 0;
+  position: relative;
   overflow-x: auto;
+  padding-block: 2px;
   scrollbar-width: none;
 }
 .header-nav-row::-webkit-scrollbar { display: none; }
+
+@media (min-width: 640px) {
+  .header-grid { gap: 12px 20px; padding-top: 18px; padding-bottom: 14px; }
+  .header-grid.has-owner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "logo owner tools"
+      "nav nav nav";
+  }
+  .owner-actions { justify-content: flex-end; gap: 16px; }
+}
+
 .logo { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 600; white-space: nowrap; }
 .logo-icon { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.logo-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) {
+  .logo { font-size: 19px; gap: 8px; }
+  .logo-icon { width: 26px; height: 26px; }
+}
+@media (max-width: 340px) {
+  .logo { font-size: 17px; }
+}
+
 .nav { display: flex; gap: 4px; width: max-content; }
 .nav a {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
   border-radius: 999px;
   font-size: 11px;
   text-transform: uppercase;
@@ -70,7 +171,6 @@ h1, h2, h3, .display {
 }
 .nav a.active { background: var(--primary); color: var(--primary-foreground); }
 .nav a:hover:not(.active) { color: var(--foreground); }
-.header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
 .btn {
   display: inline-block;
@@ -90,6 +190,8 @@ h1, h2, h3, .display {
 .btn-primary:hover { opacity: 0.9; }
 .btn-danger { border-color: var(--destructive); color: var(--destructive); }
 .btn-danger:hover { background: var(--destructive); color: white; }
+.header-grid .btn { display: inline-flex; align-items: center; min-height: 36px; padding-block: 0; white-space: nowrap; }
+
 .link-muted {
   font-size: 11px;
   text-transform: uppercase;
@@ -101,8 +203,29 @@ h1, h2, h3, .display {
 }
 .link-muted:hover { color: var(--foreground); }
 .link-muted.active { color: var(--primary); }
+.owner-links .link-muted { min-height: 36px; padding: 0 8px; white-space: nowrap; }
 
-/* Hero */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.icon-btn:hover { color: var(--foreground); border-color: var(--primary); }
+.icon-btn svg { width: 18px; height: 18px; }
+/* Show the icon for the mode you would switch TO. */
+:root[data-theme="light"] .icon-sun { display: none; }
+:root:not([data-theme="light"]) .icon-moon { display: none; }
+
+/* ---------- Hero ---------- */
 .hero { border-bottom: 1px solid var(--border); padding: 56px 0; }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent); margin: 0; }
 .hero h1 { font-size: 48px; line-height: 1.1; margin: 0; font-weight: 700; }
@@ -114,20 +237,36 @@ h1, h2, h3, .display {
 
 html, body { max-width: 100%; overflow-x: hidden; }
 
-/* Gallery */
+/* ---------- Gallery ---------- */
 .section { padding: 40px 0; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .section-head h2 { font-size: 24px; margin: 0; }
 .section-head h1 { font-size: 34px; margin: 0; }
 .count { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted-foreground); }
 
+/* Columns slider */
+.cols-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 100%;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted-foreground);
+}
+.cols-slider { flex: 1; min-width: 0; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.cols-value { min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--foreground); font-size: 13px; letter-spacing: 0; }
+@media (min-width: 640px) {
+  .cols-control { flex: 0 0 auto; }
+  .cols-slider { flex: none; width: 160px; }
+}
+
+/* Column counts come from --cols / --cols-mini (set by the slider). */
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (min-width: 700px) {
-  .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; }
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: var(--gap);
 }
 
 /* Secondary "Recently logged" row: intentionally smaller and denser so it
@@ -135,31 +274,29 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .section-mini { padding-top: 8px; }
 .display-mini { font-family: var(--font-display); font-size: 16px; margin: 0; color: var(--muted-foreground); font-weight: 600; }
 .grid-mini {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(var(--cols-mini), minmax(0, 1fr));
+  gap: var(--gap-mini);
 }
-@media (min-width: 700px) {
-  .grid-mini { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 10px; }
-}
-.grid-mini .card-title { font-size: 11px; margin: 6px 0 1px; }
-.grid-mini .card-progress { font-size: 10px; }
-.grid-mini .stars { font-size: 10px; }
 
+/* Each card is its own size container, so text scales with the real card
+   width (whatever the column count) instead of guessing from the screen. */
+.card { display: block; min-width: 0; container-type: inline-size; }
 .card-poster {
   position: relative;
   aspect-ratio: 2 / 3;
   overflow: hidden;
   border-radius: var(--radius);
-  background: linear-gradient(135deg, #34373a, #2a2c3a);
-  box-shadow: 0 8px 24px -12px rgba(0,0,0,0.6);
+  background: var(--poster-bg);
+  box-shadow: var(--shadow-card);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.card-poster:hover { transform: translateY(-4px); box-shadow: 0 16px 32px -12px rgba(0,0,0,0.7); }
+.card-poster:hover { transform: translateY(-4px); box-shadow: var(--shadow-card-hover); }
+.card:focus-visible .card-poster { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-poster .no-image {
   height: 100%; display: flex; align-items: center; justify-content: center;
-  text-align: center; padding: 0 12px; font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.15em; color: var(--muted-foreground);
+  text-align: center; padding: 0 8px; font-size: clamp(8px, 9cqw, 11px); text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--muted-foreground);
 }
 .card-poster .status-tag {
   position: absolute; left: 0; right: 0; bottom: 0;
@@ -177,16 +314,28 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 .card-title {
   margin: 8px 0 2px;
-  font-size: 14px;
+  font-size: clamp(10px, 9.5cqw, 14px);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.card-meta { display: flex; align-items: center; justify-content: space-between; }
-.card-progress { font-size: 12px; color: var(--muted-foreground); }
+.card-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 4px; }
+.card-progress { font-size: clamp(9px, 7.5cqw, 12px); color: var(--muted-foreground); }
 
 .stars { color: var(--gold); font-size: 13px; letter-spacing: 1px; }
+.card .stars { font-size: clamp(8px, 7.5cqw, 13px); letter-spacing: clamp(0px, 0.8cqw, 1px); }
+
+/* Very narrow cards: stack progress above stars instead of squeezing. */
+@container (max-width: 90px) {
+  .card-meta { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .card-title { margin-top: 5px; }
+}
+
+/* Mini strip type sizes (after the base card rules so they win). */
+.grid-mini .card-title { font-size: clamp(10px, 11cqw, 12px); margin: 6px 0 1px; }
+.grid-mini .card-progress { font-size: clamp(9px, 8cqw, 10px); }
+.grid-mini .card .stars { font-size: clamp(8px, 8cqw, 10px); }
 
 .empty {
   border: 1px dashed var(--border);
@@ -198,7 +347,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 .empty.error { border-color: var(--destructive); color: var(--destructive); }
 
-/* Filters */
+/* ---------- Filters ---------- */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
 .filter-btn {
   border-radius: 999px; padding: 7px 14px; font-size: 11px;
@@ -209,7 +358,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .filter-btn.active { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
 .filter-btn:hover:not(.active) { color: var(--foreground); }
 
-/* Forms */
+/* ---------- Forms ---------- */
 .field { margin-bottom: 20px; }
 .field label {
   display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
@@ -234,7 +383,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .form-actions { display: flex; gap: 12px; margin-top: 8px; align-items: center; }
 .error-text { color: var(--destructive); font-size: 13px; margin: 8px 0; }
 
-/* Detail page */
+/* ---------- Detail page ---------- */
 .detail-grid { display: grid; grid-template-columns: 1fr; gap: 32px; padding: 48px 0; }
 @media (min-width: 640px) { .detail-grid { grid-template-columns: 220px 1fr; } }
 .detail-poster { width: 100%; max-width: 220px; margin: 0 auto; }
@@ -250,8 +399,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .status-badge.status-completed { color: var(--destructive); border-color: var(--destructive); }
 .review-text { margin-top: 24px; max-width: 560px; line-height: 1.7; white-space: pre-wrap; }
 
-/* Login */
-.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+/* ---------- Login ---------- */
+.login-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; }
 .login-box { width: 100%; max-width: 360px; padding: 24px; }
 .login-box .logo { display: flex; margin-bottom: 32px; font-size: 30px; }
 .login-box .logo-icon { width: 36px; height: 36px; }
@@ -266,3 +415,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 }
 
 .loading-text { color: var(--muted-foreground); font-size: 14px; padding: 24px 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-poster { transition: none; }
+  .card-poster:hover { transform: none; }
+}
