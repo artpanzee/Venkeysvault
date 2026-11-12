@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Venkey's Vault</title>
   <meta name="description" content="A personal journal of movies, TV, anime, books, manga, and games." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,6 +12,21 @@
   <link rel="apple-touch-icon" href="favicon.png" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#232629" />
+  <!-- Sets the theme before first paint so there is no dark/light flash.
+       Uses the saved choice, otherwise the device setting. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("vault_theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute("content", t === "light" ? "#f6f4ef" : "#232629");
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
