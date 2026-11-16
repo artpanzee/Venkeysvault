@@ -132,7 +132,7 @@ async function getEntries(forceRefresh = false) {
 // Both are per-device (localStorage) and never touch the Sheet.
 const THEME_KEY = "vault_theme";   // "light" | "dark" (absent = follow the system)
 const COLS_KEY = "vault_columns";  // JSON: { mobile: n, desktop: n }
-const THEME_COLORS = { dark: "#232629", light: "#f6f4ef" }; // browser-bar colour
+const THEME_COLORS = { dark: "#002c3e", light: "#78bcc4" }; // browser-bar colour
 const COLS_MIN = 2;
 const COLS_MAX = { mobile: 6, desktop: 10 };
 const COLS_DEFAULT = { mobile: 2, desktop: 5 };
@@ -200,21 +200,43 @@ function applyCols(n) {
   style.setProperty("--gap", `${gap}px`);
   style.setProperty("--gap-mini", `${Math.max(6, Math.round(gap / 2))}px`);
 }
+const ICON_GRID = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>';
+
+// A grid icon button; tapping it opens a popover holding the slider.
 function columnsControlHtml() {
   const device = deviceClass();
   const n = getCols();
   return `
-    <div class="cols-control">
-      <span>Columns</span>
-      <input type="range" class="cols-slider" min="${COLS_MIN}" max="${COLS_MAX[device]}" step="1" value="${n}" aria-label="Cards per row" />
-      <output class="cols-value">${n}</output>
+    <div class="cols-menu">
+      <button type="button" class="icon-btn cols-toggle" aria-label="Change columns" title="Change columns" aria-haspopup="dialog" aria-expanded="false" aria-controls="colsPopover">${ICON_GRID}</button>
+      <div class="cols-popover" id="colsPopover" role="dialog" aria-label="Grid columns" hidden>
+        <div class="cols-popover-head">
+          <span class="cols-popover-title">Cards per row</span>
+          <output class="cols-value">${n}</output>
+        </div>
+        <input type="range" class="cols-slider" min="${COLS_MIN}" max="${COLS_MAX[device]}" step="1" value="${n}" aria-label="Cards per row" />
+        <div class="cols-range-labels" aria-hidden="true"><span>Larger</span><span>Smaller</span></div>
+      </div>
     </div>`;
 }
 function setColsOutputs(n) {
   document.querySelectorAll(".cols-value").forEach((o) => { o.textContent = n; });
 }
+function setColsPopover(menu, open) {
+  const pop = menu.querySelector(".cols-popover");
+  const btn = menu.querySelector(".cols-toggle");
+  pop.hidden = !open;
+  btn.setAttribute("aria-expanded", String(open));
+}
 function wireColumnsControl() {
-  document.querySelectorAll(".cols-slider").forEach((slider) => {
+  document.querySelectorAll(".cols-menu").forEach((menu) => {
+    const btn = menu.querySelector(".cols-toggle");
+    const slider = menu.querySelector(".cols-slider");
+    btn.addEventListener("click", () => {
+      const willOpen = menu.querySelector(".cols-popover").hidden;
+      setColsPopover(menu, willOpen);
+      if (willOpen) slider.focus();
+    });
     slider.addEventListener("input", () => {
       const n = clampCols(slider.value, deviceClass());
       saveCols(n);
@@ -223,6 +245,19 @@ function wireColumnsControl() {
     });
   });
 }
+// Registered once (not per page): tap outside or press Esc to close.
+document.addEventListener("click", (e) => {
+  document.querySelectorAll(".cols-menu").forEach((menu) => {
+    if (!menu.contains(e.target)) setColsPopover(menu, false);
+  });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".cols-menu").forEach((menu) => {
+    const pop = menu.querySelector(".cols-popover");
+    if (!pop.hidden) { setColsPopover(menu, false); menu.querySelector(".cols-toggle").focus(); }
+  });
+});
 // Rotating a phone / resizing across the breakpoint switches between the
 // mobile and desktop preference (and slider range).
 desktopQuery.addEventListener("change", () => {
@@ -401,8 +436,10 @@ async function renderHome() {
       <div class="wrap">
         <div class="section-head">
           <h2 class="display">Currently in progress</h2>
-          <span class="count" id="progressCount"></span>
-          ${columnsControlHtml()}
+          <div class="section-tools">
+            <span class="count" id="progressCount"></span>
+            ${columnsControlHtml()}
+          </div>
         </div>
         <div id="progressTarget"><p class="loading-text">Loading…</p></div>
       </div>
@@ -466,7 +503,7 @@ async function renderCategory(categoryKey) {
       <div class="wrap">
         <div class="section-head">
           <h1 class="display">${cat.label}</h1>
-          ${columnsControlHtml()}
+          <div class="section-tools">${columnsControlHtml()}</div>
         </div>
         <div class="filters" id="filters"></div>
         <div id="galleryTarget"><p class="loading-text">Loading…</p></div>
