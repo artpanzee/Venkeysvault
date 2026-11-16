@@ -1,24 +1,31 @@
+/* Brand palette
+   Abyss Ink  #002C3E  — dark-mode background, light-mode text and buttons
+   Tide Glass #78BCC4  — light-mode background, dark-mode accent and buttons
+   Everything else below is a tint or shade of those two. */
 :root {
   color-scheme: dark;
-  --radius: 8px;
-  --background: #232629;
-  --foreground: #f2f1ee;
-  --card: #2b2e31;
-  --primary: #d9b36c;
-  --primary-foreground: #221c0f;
-  --muted: #34373a;
-  --muted-foreground: #a3a29d;
-  --accent: #6bb8b0;
-  --destructive: #d9695c;
-  --border: #3c3f42;
-  --input: #2f3235;
-  --gold: #e0c07d;
-  --status-progress: #6fbf73;
-  --status-hold: #e0a83f;
-  --status-plan: #a988d9;
-  --poster-bg: linear-gradient(135deg, #34373a, #2a2c3a);
-  --shadow-card: 0 8px 24px -12px rgba(0,0,0,0.6);
-  --shadow-card-hover: 0 16px 32px -12px rgba(0,0,0,0.7);
+  --radius: 12px;
+  --background: #002c3e;
+  --foreground: #e6f3f4;
+  --card: #07384c;
+  --primary: #78bcc4;
+  --primary-foreground: #002c3e;
+  --muted: #0d4459;
+  --muted-foreground: #8dbac1;
+  --accent: #9fd3d9;
+  --highlight: #78bcc4;
+  --destructive: #f08574;
+  --border: #1d5368;
+  --input: #043347;
+  --gold: #9fd3d9;
+  --status-progress: #6fd3a0;
+  --status-hold: #f0b862;
+  --status-plan: #b9a1f2;
+  --poster-bg: linear-gradient(135deg, #0d4459, #06374b);
+  --hero-glow: radial-gradient(ellipse 60% 120% at 85% 0%, rgba(120,188,196,0.16), transparent 70%);
+  --shadow-card: 0 10px 26px -14px rgba(0,0,0,0.7);
+  --shadow-card-hover: 0 18px 34px -14px rgba(0,0,0,0.8);
+  --shadow-pop: 0 18px 40px -12px rgba(0,0,0,0.65);
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Playfair Display", "Times New Roman", serif;
 
@@ -33,29 +40,34 @@
   :root { --cols: 5; --cols-mini: 10; --gap: 24px; --gap-mini: 10px; }
 }
 
-/* Light theme. Gold/teal/status colours are darkened so they keep enough
-   contrast on a light background. */
+/* Light theme: Tide Glass background, Abyss Ink type and buttons. Status
+   colours are deepened so the small badges stay readable on pale surfaces. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --background: #f6f4ef;
-  --foreground: #1f2124;
-  --card: #ffffff;
-  --primary: #9a6a10;
-  --primary-foreground: #fffaf0;
-  --muted: #ebe8e0;
-  --muted-foreground: #5c5a54;
-  --accent: #23766f;
-  --destructive: #b4412e;
-  --border: #d8d3c7;
-  --input: #ffffff;
-  --gold: #a46f06;
-  --status-progress: #2e8638;
-  --status-hold: #b27508;
-  --status-plan: #7449b3;
-  --poster-bg: linear-gradient(135deg, #e6e2d8, #d9dcea);
-  --shadow-card: 0 8px 20px -12px rgba(40,30,10,0.35);
-  --shadow-card-hover: 0 14px 28px -12px rgba(40,30,10,0.45);
+  --background: #78bcc4;
+  --foreground: #002c3e;
+  --card: #dff1f3;
+  --primary: #002c3e;
+  --primary-foreground: #d9eef0;
+  --muted: #6bb0b9;
+  --muted-foreground: #174657;
+  --accent: #073a4d;
+  --highlight: #0a5a70;
+  --destructive: #7a2314;
+  --border: #55a0aa;
+  --input: #e9f6f7;
+  --gold: #002c3e;
+  --status-progress: #1a6e3c;
+  --status-hold: #8a5a00;
+  --status-plan: #6a3fb0;
+  --poster-bg: linear-gradient(135deg, #a9d6db, #8ec8d0);
+  --hero-glow: radial-gradient(ellipse 60% 120% at 85% 0%, rgba(255,255,255,0.35), transparent 70%);
+  --shadow-card: 0 10px 24px -14px rgba(0,44,62,0.55);
+  --shadow-card-hover: 0 18px 32px -14px rgba(0,44,62,0.6);
+  --shadow-pop: 0 18px 40px -14px rgba(0,44,62,0.5);
 }
+
+::selection { background: var(--primary); color: var(--primary-foreground); }
 
 * { box-sizing: border-box; }
 
@@ -174,7 +186,7 @@ h1, h2, h3, .display {
 
 .btn {
   display: inline-block;
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 9px 18px;
   font-size: 11px;
   font-weight: 600;
@@ -189,7 +201,7 @@ h1, h2, h3, .display {
 .btn-primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
 .btn-primary:hover { opacity: 0.9; }
 .btn-danger { border-color: var(--destructive); color: var(--destructive); }
-.btn-danger:hover { background: var(--destructive); color: white; }
+.btn-danger:hover { background: var(--destructive); color: var(--background); }
 .header-grid .btn { display: inline-flex; align-items: center; min-height: 36px; padding-block: 0; white-space: nowrap; }
 
 .link-muted {
@@ -226,10 +238,10 @@ h1, h2, h3, .display {
 :root:not([data-theme="light"]) .icon-moon { display: none; }
 
 /* ---------- Hero ---------- */
-.hero { border-bottom: 1px solid var(--border); padding: 56px 0; }
+.hero { border-bottom: 1px solid var(--border); padding: 56px 0; background: var(--hero-glow); }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent); margin: 0; }
 .hero h1 { font-size: 48px; line-height: 1.1; margin: 0; font-weight: 700; }
-.hero h1 em { color: var(--primary); font-style: italic; }
+.hero h1 em { color: var(--highlight); font-style: italic; }
 @media (max-width: 480px) {
   .hero { padding: 40px 0; }
   .hero h1 { font-size: 36px; }
@@ -244,23 +256,31 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .section-head h1 { font-size: 34px; margin: 0; }
 .count { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted-foreground); }
 
-/* Columns slider */
-.cols-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 100%;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: var(--muted-foreground);
+/* Columns control: a grid icon that opens a small popover with the slider. */
+.section-tools { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.cols-menu { position: relative; flex-shrink: 0; }
+.cols-toggle[aria-expanded="true"] { color: var(--foreground); border-color: var(--primary); background: var(--muted); }
+.cols-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 20;
+  width: min(260px, calc(100vw - 48px));
+  padding: 14px 16px 12px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-pop);
+  animation: pop-in 0.14s ease-out;
 }
-.cols-slider { flex: 1; min-width: 0; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
-.cols-value { min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--foreground); font-size: 13px; letter-spacing: 0; }
-@media (min-width: 640px) {
-  .cols-control { flex: 0 0 auto; }
-  .cols-slider { flex: none; width: 160px; }
-}
+.cols-popover[hidden] { display: none; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.cols-popover-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.cols-popover-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted-foreground); }
+.cols-value { min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; font-family: var(--font-display); }
+.cols-slider { display: block; width: 100%; height: 28px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.cols-range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted-foreground); }
 
 /* Column counts come from --cols / --cols-mini (set by the slider). */
 .grid {
@@ -390,7 +410,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 @media (min-width: 640px) { .detail-poster { margin: 0; } }
 .detail-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; color: var(--muted-foreground); font-size: 14px; }
 .status-badge {
-  border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+  border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 4px 12px;
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
 }
 .status-badge.status-progress { color: var(--status-progress); border-color: var(--status-progress); }
@@ -419,4 +439,5 @@ html, body { max-width: 100%; overflow-x: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .card-poster { transition: none; }
   .card-poster:hover { transform: none; }
+  .cols-popover { animation: none; }
 }
